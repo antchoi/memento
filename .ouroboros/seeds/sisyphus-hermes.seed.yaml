@@ -1,0 +1,417 @@
+metadata:
+  seed_id: sisyphus-hermes-plugin-v0
+  title: Hermes-native Sisyphus full plugin
+  version: 0.1.0
+  created_at: "2026-05-10T23:04:07Z"
+  project_dir: /Users/yhchoi/workspace/sisyphus-hermes
+  source: hermes-assisted-ouroboros-auto-repair
+  ouroboros_auto_session_id: auto_c9ed3d5af099
+  ouroboros_interview_session_ids:
+    - interview_58cfc482fcd3464c
+    - interview_20260510_230355
+    - interview_b7911404d0e343e6
+  ambiguity_score: 0.15
+  status: seed_ready_for_ouroboros_execution
+
+goal: >-
+  Build a production-oriented Hermes Agent plugin named sisyphus-hermes that ports
+  the useful workflow ideas of oh-my-openagent's Sisyphus/Ultraworker into a
+  Hermes-native architecture. The plugin must treat Sisyphus as a disciplined,
+  durable long-horizon task lifecycle rather than as an OpenCode watcher or a
+  single opaque long-running prompt. It must provide user-facing commands and
+  internal services for planning, starting, monitoring, reviewing, pausing,
+  cancelling, resuming, and reporting coding work through Hermes primitives.
+
+problem_statement: >-
+  The current Hermes + OpenCode + oh-my-openagent/Sisyphus integration is brittle
+  because Hermes can only observe OpenCode indirectly through logs, process state,
+  and database artifacts. Agent naming, plugin loading, and TUI state can drift,
+  causing false progress reports and failed delegation. A Hermes-native Sisyphus
+  plugin should eliminate this mismatch by making Hermes' own Kanban board,
+  profiles, skills, memory/session search, cron/event watchers, subagents, and
+  terminal/file tools the source of truth.
+
+actors:
+  - name: founder_user
+    responsibility: Provides repository/workspace path, goal/task text, approvals, cancellation decisions, and explicit consent for any guarded operation.
+  - name: hermes_plugin_command_layer
+    responsibility: Owns command parsing, adapter injection, structured command results, and Telegram-friendly rendering boundaries.
+  - name: metis_planner
+    responsibility: Produces plans, risks, assumptions, questions, task decompositions, and acceptance criteria before execution.
+  - name: momus_reviewer
+    responsibility: Critiques draft plans and implementation evidence, blocks weak assumptions, and records review gates.
+  - name: sisyphus_lifecycle_worker
+    responsibility: Owns durable Run/Plan/Task lifecycle state and keeps long-horizon work moving through approved state transitions.
+  - name: hephaestus_executor
+    responsibility: Executes only approved, scoped tasks through Hermes-native workers or optional executor adapters and records evidence.
+  - name: hermes_sheriff
+    responsibility: Performs repository preflight, destructive git guardrails, audit logging, and safety-oriented status reporting.
+  - name: optional_external_executor_adapter
+    responsibility: Future peer interface for OpenCode, Codex, or Claude Code; never the source of truth and never supervised through log scraping.
+
+inputs:
+  - repository_or_workspace_path
+  - user_goal_or_task_text
+  - plan_approval_or_rejection_decisions
+  - hermes_config_profile_skill_kanban_cron_availability
+  - cron_or_event_payloads_that_create_durable_tasks_only
+  - optional_executor_selection
+  - current_run_plan_task_gate_evidence_audit_state
+  - destructive_git_safety_policy_and_user_consent
+
+outputs:
+  - standalone_hermes_plugin_package
+  - slash_or_cli_command_surface
+  - durable_run_plan_task_reviewgate_evidence_auditevent_state
+  - kanban_tasks_when_available_or_sqlite_fallback_records
+  - append_only_audit_and_evidence_artifacts
+  - telegram_friendly_status_and_report_text
+  - doctor_diagnostics_for_hermes_profile_plugin_kanban_sqlite_cron_readiness
+  - automated_tests_and_user_developer_documentation
+
+runtime_context:
+  project_type: greenfield_standalone_plugin
+  project_dir: /Users/yhchoi/workspace/sisyphus-hermes
+  host_environment: Local Hermes Agent installation on macOS.
+  source_of_truth: Hermes Kanban when available; project-local SQLite fallback only when Kanban is unavailable.
+  core_primitives: Hermes plugin APIs, profiles, skills, Kanban, cron/event watchers, delegation/subagents, terminal/file/process tools, and messaging/reporting channels.
+  explicit_non_goals:
+    - cloud sync
+    - paid services
+    - production deployment
+    - log-scraping supervision of OpenCode, Codex, Claude Code, or oh-my-openagent Sisyphus sessions
+
+primary_users:
+  - name: repository_owner
+    description: A developer who wants long-horizon coding work coordinated from Hermes/Telegram/CLI with durable status and review gates.
+  - name: sisyphus_worker
+    description: A Hermes profile or spawned worker process responsible for executing scoped implementation tasks.
+  - name: reviewer_or_critic
+    description: A Hermes profile/subagent responsible for adversarial review, acceptance-criteria checks, and safety gates.
+
+non_goals:
+  - Reimplement OpenCode or depend on OpenCode internals for core behavior.
+  - Create a skill-only MVP as the final architecture.
+  - Build an opaque autonomous loop without durable task state.
+  - Auto-merge, force-push, or destructively rewrite user repositories.
+  - Require external SaaS beyond already configured Hermes/Ouroboros/model tooling.
+  - Store or print API keys, OAuth tokens, private SSH keys, or other secrets.
+  - Cloud sync, paid service integrations, or production deployment automation in the MVP.
+  - Let cron jobs execute implementation work directly; cron may only detect events and enqueue durable work.
+  - Treat OpenCode/Codex/Claude Code logs, TUI state, or process output as the Sisyphus lifecycle source of truth.
+
+mvp_scope:
+  required:
+    - Standalone Hermes plugin repository at /Users/yhchoi/workspace/sisyphus-hermes.
+    - Command handlers for init, start, plan, approve-plan, status, pause, resume, cancel, review, report, and doctor.
+    - Observable role behavior for Metis, Momus, Sisyphus, Hephaestus, and Hermes-Sheriff through persisted decisions/actions and report output.
+    - Kanban-backed durable lifecycle with SQLite fallback.
+    - Append-only audit/evidence records for success, failure, blocked, and guarded operations.
+    - Telegram-friendly default reporting plus structured JSON output where useful for tests.
+    - Destructive git guardrails enforced in both command layer and generated worker payloads.
+  deferred_but_designed:
+    - Rich external executor implementations for OpenCode, Codex, and Claude Code.
+    - Advanced cron automation beyond event-to-task creation.
+    - Remote/cloud synchronization of lifecycle state.
+    - Production deployment packaging beyond local install/developer setup.
+
+constraints:
+  environment:
+    - Development target is macOS with project root /Users/yhchoi/workspace/sisyphus-hermes.
+    - Plugin must be usable from a local Hermes install and must not require modifying Hermes core for the MVP unless a documented extension point is missing.
+    - Generated runtime state must stay under project-local or Hermes-approved state directories and be gitignored when not source.
+  architecture:
+    - Design for full Hermes plugin architecture from the outset.
+    - Use Hermes-native primitives as first-class dependencies: profiles, skills, Kanban, cron/event watchers, memory/session search, delegation/subagents, terminal/file tools, process management, and messaging-friendly reporting.
+    - OpenCode may appear only as an optional executor peer in a later extension point, never as the core Sisyphus engine.
+  safety:
+    - Protect dirty worktrees before any implementation task.
+    - No git reset --hard, git clean, force push, main direct push, or merge without explicit user approval.
+    - All command execution must be scoped to a known repository/workdir.
+    - Long-running background work must have observable task state, cancellation, and status reporting.
+  quality:
+    - Tests and documentation are required for every public command and state transition.
+    - Acceptance criteria must be mechanically verifiable where possible.
+
+ontology_schema:
+  name: SisyphusHermesDomain
+  entities:
+    - name: SisyphusRun
+      description: Top-level long-horizon work session initiated by a user.
+      fields:
+        - {name: id, type: string, required: true}
+        - {name: title, type: string, required: true}
+        - {name: repo_path, type: path, required: true}
+        - {name: objective, type: string, required: true}
+        - {name: state, type: "enum[pending,planning,ready,running,paused,blocked,review,completed,cancelled,failed]", required: true}
+        - {name: plan_id, type: string, required: false}
+        - {name: kanban_board, type: string, required: false}
+        - {name: created_at, type: datetime, required: true}
+        - {name: updated_at, type: datetime, required: true}
+        - {name: audit_log, type: "array[AuditEvent]", required: true}
+    - name: SisyphusPlan
+      description: Draft or canonical plan that gates work execution.
+      fields:
+        - {name: id, type: string, required: true}
+        - {name: run_id, type: string, required: true}
+        - {name: status, type: "enum[draft,under_review,canonical,rejected,superseded]", required: true}
+        - {name: tasks, type: "array[SisyphusTask]", required: true}
+        - {name: acceptance_criteria, type: "array[string]", required: true}
+        - {name: risks, type: "array[string]", required: true}
+        - {name: reviewer_notes, type: "array[string]", required: false}
+    - name: SisyphusTask
+      description: A durable unit of work mapped to Hermes Kanban where possible.
+      fields:
+        - {name: id, type: string, required: true}
+        - {name: run_id, type: string, required: true}
+        - {name: title, type: string, required: true}
+        - {name: description, type: string, required: true}
+        - {name: status, type: "enum[ready,running,blocked,review,complete,failed,cancelled]", required: true}
+        - {name: executor, type: "enum[hermes_profile,delegate_task,manual,external_executor]", required: true}
+        - {name: profile, type: string, required: false}
+        - {name: evidence, type: "array[Evidence]", required: true}
+    - name: ReviewGate
+      description: A required validation checkpoint before state advancement.
+      fields:
+        - {name: id, type: string, required: true}
+        - {name: gate_type, type: "enum[preflight,plan_review,implementation_review,quality_review,safety_review,final_acceptance]", required: true}
+        - {name: status, type: "enum[pending,passed,failed,waived]", required: true}
+        - {name: reviewer, type: string, required: false}
+        - {name: findings, type: "array[string]", required: true}
+    - name: Evidence
+      description: Verifiable artifact proving progress or failure.
+      fields:
+        - {name: kind, type: "enum[file,diff,test,command,log,kanban,event,report]", required: true}
+        - {name: summary, type: string, required: true}
+        - {name: pointer, type: string, required: false}
+        - {name: captured_at, type: datetime, required: true}
+    - name: AuditEvent
+      description: Append-only event for observability and recovery.
+      fields:
+        - {name: timestamp, type: datetime, required: true}
+        - {name: actor, type: string, required: true}
+        - {name: action, type: string, required: true}
+        - {name: details, type: object, required: false}
+
+functional_requirements:
+  plugin_bootstrap:
+    - Create a standalone repository with packaging metadata, source layout, tests, docs, and examples.
+    - Provide an installable Hermes plugin entry point or documented local plugin registration path.
+    - Include a developer setup command and smoke-test command.
+  command_surface:
+    - Provide user-facing commands or slash-command equivalents for: init, start, plan, approve-plan, status, pause, resume, cancel, review, report, doctor.
+    - Commands must produce concise Telegram-friendly output by default and verbose machine-readable JSON when requested.
+    - Commands must never require interactive TUI state to be the only source of truth.
+  planning_lifecycle:
+    - Implement draft-to-canonical planning inspired by oh-my-openagent/oh-my-hermes, with explicit approval or review gate before execution.
+    - Record assumptions, non-goals, risks, task decomposition, acceptance criteria, and rollback/safety strategy in the plan artifact.
+    - Reject execution when no canonical plan exists unless user explicitly requests a bounded spike.
+  durable_state:
+    - Persist runs, plans, tasks, gates, evidence, and audit events in a documented local state model.
+    - Prefer Hermes Kanban as the task source of truth when available; provide a project-local fallback store if Kanban is unavailable.
+    - Provide idempotent state transitions and recovery after process interruption.
+  worker_orchestration:
+    - Support Hermes profile workers for long-lived roles such as sisyphus, metis, momus, hephaestus, and sheriff.
+    - Support delegate_task for bounded sub-reviews or research fanout.
+    - Ensure every worker receives explicit scoped context; no worker may depend on hidden parent conversation state.
+  review_gates:
+    - Implement at least four gate types: preflight safety, plan review, implementation/spec review, and final acceptance review.
+    - Failed gates must produce actionable findings and move the run/task to blocked or review, not silently continue.
+  repository_safety:
+    - Preflight must inspect git status, branch, remotes, untracked files, and dirty changes before implementation.
+    - Any potentially destructive git operation requires explicit user confirmation and must be disabled by default.
+    - The plugin must separate source changes from generated/runtime artifacts and update .gitignore recommendations.
+  reporting:
+    - Status reports must include current goal, current state, progress evidence, changed files, verification commands/results, blockers, risks, and next action.
+    - Reports must avoid dumping raw logs unless verbose mode is requested.
+    - Cancellation and pause reports must identify surviving child processes or incomplete tasks when applicable.
+  optional_executor_extension:
+    - Define an interface for future executor peers such as OpenCode, Codex, or Claude Code.
+    - The initial implementation may include a stub but must not depend on OpenCode for core tests.
+
+deliverables:
+  - path: pyproject.toml
+    description: Python package/plugin metadata, dev dependencies, test commands.
+  - path: src/sisyphus_hermes/
+    description: Plugin source package.
+  - path: src/sisyphus_hermes/plugin.py
+    description: Hermes plugin registration and command wiring.
+  - path: src/sisyphus_hermes/domain.py
+    description: Typed domain models for runs, plans, tasks, gates, evidence, and audit events.
+  - path: src/sisyphus_hermes/state.py
+    description: Durable state adapter with local fallback and Kanban abstraction boundary.
+  - path: src/sisyphus_hermes/commands.py
+    description: Command handlers for init/start/plan/approve/status/pause/resume/cancel/review/report/doctor.
+  - path: src/sisyphus_hermes/safety.py
+    description: Repository preflight and destructive-operation guardrails.
+  - path: src/sisyphus_hermes/reporting.py
+    description: Telegram-friendly and JSON status rendering.
+  - path: src/sisyphus_hermes/executors/
+    description: Hermes profile/delegate_task executor adapters and optional external executor interface.
+  - path: skills/sisyphus-ultraworker/SKILL.md
+    description: Bundled skill defining Sisyphus worker discipline.
+  - path: skills/metis-planner/SKILL.md
+    description: Bundled skill defining planning and risk analysis discipline.
+  - path: skills/momus-reviewer/SKILL.md
+    description: Bundled skill defining adversarial review gates.
+  - path: docs/architecture.md
+    description: Architecture, state model, command lifecycle, extension points.
+  - path: docs/user-guide.md
+    description: Installation, setup, command examples, Telegram usage, recovery procedures.
+  - path: tests/
+    description: Unit and integration tests for command behavior, state transitions, safety checks, and reporting.
+
+acceptance_criteria:
+  - id: AC01_repo_bootstrap
+    criterion: Repository contains README.md, pyproject.toml, src package, tests package, docs directory, bundled skills directory, .gitignore, and this seed under .ouroboros/seeds/.
+    verification: File existence check plus package import smoke test.
+  - id: AC02_plugin_registration
+    criterion: Plugin exposes a documented register(ctx) or equivalent Hermes plugin entry point that can register command handlers without importing unavailable runtime-only dependencies at module import time.
+    verification: Unit test imports plugin and invokes registration against a fake context.
+  - id: AC03_command_surface
+    criterion: init, start, plan, approve-plan, status, pause, resume, cancel, review, report, and doctor command handlers exist and return structured results.
+    verification: Unit tests call each handler with fake adapters and assert success/error shape.
+  - id: AC04_draft_to_canonical_plan
+    criterion: Execution cannot begin from a draft plan; approve-plan promotes a reviewed draft to canonical and records an audit event.
+    verification: State transition tests for rejected draft execution and successful canonical promotion.
+  - id: AC05_durable_state
+    criterion: Runs, plans, tasks, review gates, evidence, and audit events persist across process restarts using the local fallback store.
+    verification: Create state, reload adapter, assert all entities survive with stable ids.
+  - id: AC06_kanban_boundary
+    criterion: State layer defines a Kanban adapter boundary and can run tests without a live Hermes Kanban database.
+    verification: Fake Kanban adapter tests plus local fallback tests.
+  - id: AC07_preflight_safety
+    criterion: start/execute paths perform git preflight and block destructive or ambiguous states unless explicitly overridden by a safe documented flag.
+    verification: Tests simulate dirty worktree, detached HEAD, protected branch, and untracked files.
+  - id: AC08_destructive_guardrails
+    criterion: reset --hard, git clean, force push, direct main push, and merge operations are blocked by default in generated worker instructions and command safety layer.
+    verification: Static tests over generated prompts/skills plus unit tests for safety classifier.
+  - id: AC09_worker_context
+    criterion: Worker dispatch payloads include explicit repo path, task description, acceptance criteria, safety constraints, and reporting contract; no payload relies on current chat history.
+    verification: Unit test snapshots worker payloads.
+  - id: AC10_review_gates
+    criterion: At least preflight, plan review, implementation/spec review, quality review, and final acceptance gates are represented and state transitions respect failed gates.
+    verification: Gate transition tests.
+  - id: AC11_reporting
+    criterion: status/report output is concise, Telegram-friendly, and includes goal, state, evidence, changed files, verification results, blockers, risks, and next action.
+    verification: Snapshot tests for text and JSON renderers.
+  - id: AC12_cancellation_pause
+    criterion: pause and cancel commands update state, record audit events, and report incomplete tasks and known child process handles when provided by adapters.
+    verification: Unit tests with fake process/executor adapters.
+  - id: AC13_bundled_skills
+    criterion: Bundled Sisyphus/Metis/Momus skills exist, have valid SKILL.md frontmatter, and document triggers, workflow, pitfalls, and verification.
+    verification: Skill frontmatter parser test.
+  - id: AC14_documentation
+    criterion: docs/architecture.md and docs/user-guide.md explain architecture, install/setup, command examples, safety model, state recovery, and optional executor extension.
+    verification: Documentation checklist test or reviewer checklist.
+  - id: AC15_no_opencode_dependency
+    criterion: Core tests pass without OpenCode installed and no core module imports OpenCode-specific packages.
+    verification: CI/local test environment without OpenCode plus import scan.
+  - id: AC16_test_suite
+    criterion: pytest suite passes locally and covers domain models, state, commands, safety, reporting, plugin registration, and skill validation.
+    verification: python -m pytest -q.
+  - id: AC17_lint_type_baseline
+    criterion: Project provides formatter/linter/type-check commands and current source passes the selected baseline.
+    verification: ruff/pytest or documented equivalent command passes.
+  - id: AC18_seed_traceability
+    criterion: Implementation references this Seed in README or docs and maps acceptance criteria to tests or checklist items.
+    verification: README/docs contain seed path and AC mapping.
+
+  - id: AC19_actor_input_output_runtime_closure
+    criterion: Seed and implementation explicitly model actors, accepted inputs, produced outputs, runtime context, MVP-required scope, and deferred/non-goal boundaries.
+    verification: Documentation/schema tests assert these sections exist and command results reference the same actor/input/output vocabulary.
+  - id: AC20_cron_event_to_task_only
+    criterion: Cron/event integration can create or update durable tasks but never executes implementation work directly.
+    verification: Unit tests simulate cron/event payloads and assert Kanban/SQLite task records are created while executor adapters are not invoked.
+  - id: AC21_role_last_action_visibility
+    criterion: "status/report output includes each role's most recent decision/action when available: Metis, Momus, Sisyphus, Hephaestus, and Hermes-Sheriff."
+    verification: Snapshot tests over seeded audit/evidence state.
+  - id: AC22_sqlite_fallback_contract
+    criterion: When Kanban is unavailable, SQLite becomes the local source of truth with equivalent Run/Plan/Task/Gate/Evidence/AuditEvent persistence semantics.
+    verification: Integration test runs init/plan/approve-plan/start/status/report entirely against a temporary SQLite database with a fake-unavailable Kanban adapter.
+
+evaluation_principles:
+  - name: hermes_native_architecture
+    weight: 0.25
+    description: Uses Hermes primitives directly instead of wrapping or watching OpenCode.
+  - name: durable_observability
+    weight: 0.2
+    description: Every significant action leaves task/evidence/audit state that supports recovery and reporting.
+  - name: safety_first_coding
+    weight: 0.2
+    description: Protects user repositories, secrets, and branches by default.
+  - name: executable_plugin_quality
+    weight: 0.2
+    description: Produces a real installable/testable plugin with command handlers and docs.
+  - name: extensibility
+    weight: 0.15
+    description: Clean boundaries for Kanban, workers, and optional executor peers.
+
+suggested_implementation_slices:
+  - id: S1_bootstrap
+    title: Repository and package skeleton
+    tasks:
+      - Create pyproject.toml, src package, tests, docs, bundled skills directory.
+      - Add README with seed traceability and development commands.
+      - Add import smoke test.
+  - id: S2_domain_state
+    title: Domain models and durable local state
+    tasks:
+      - Implement typed models.
+      - Implement local JSON or SQLite fallback store.
+      - Add idempotent transition tests.
+  - id: S3_plugin_commands
+    title: Plugin registration and command surface
+    tasks:
+      - Implement fake-context-testable plugin registration.
+      - Implement command result schema and handlers.
+  - id: S4_safety_reporting
+    title: Safety preflight and status rendering
+    tasks:
+      - Implement git preflight and destructive-operation classifier.
+      - Implement Telegram-friendly and JSON reporting.
+  - id: S5_planning_gates_workers
+    title: Plan lifecycle, review gates, and worker payloads
+    tasks:
+      - Implement draft/canonical lifecycle.
+      - Implement gate transitions.
+      - Implement Hermes profile/delegate_task adapter interfaces with fakes.
+  - id: S6_skills_docs
+    title: Bundled skills and documentation
+    tasks:
+      - Author Sisyphus/Metis/Momus SKILL.md files.
+      - Write architecture and user guide docs.
+  - id: S7_integration_hardening
+    title: Integration tests and extension points
+    tasks:
+      - Add Kanban adapter boundary tests.
+      - Add optional external executor stub.
+      - Map acceptance criteria to tests.
+
+  - id: S8_runtime_contract_closure
+    title: Actors, inputs, outputs, and runtime contracts
+    tasks:
+      - Add explicit schema/types for actors, command inputs, command outputs, runtime context, and source-of-truth selection.
+      - Add tests proving cron/event payloads enqueue durable tasks only.
+      - Add status/report snapshots showing each role's most recent decision/action.
+      - Add SQLite fallback integration test mirroring the Kanban lifecycle.
+
+exit_conditions:
+  success:
+    - All acceptance criteria AC01 through AC22 pass.
+    - Test suite and lint/type baseline pass.
+    - User can install or load plugin locally and run doctor/status against a sample project.
+  blocked:
+    - Hermes plugin API lacks a required extension point and no safe shim can be documented.
+    - Kanban integration cannot be tested without modifying Hermes core and fallback store cannot satisfy durable behavior.
+    - Safety constraints conflict with requested automation scope.
+  abort:
+    - Implementation would require exposing secrets or destructive repository operations.
+    - User cancels full plugin objective.
+
+open_questions: []
+resolved_decisions:
+  - Hermes plugin API target will be discovered during S1/S3 bootstrap and captured behind a fake-context-testable plugin registration boundary.
+  - Durable fallback state is SQLite for MVP; JSON may be used only for fixtures or exported reports.
+  - Command surface should share one service layer and expose both plugin/slash-command handlers and a developer CLI wrapper where practical.
+  - Role routing is specified by role contracts and persisted decisions/actions; exact model/profile routing remains configuration, not a hard-coded implementation dependency.
