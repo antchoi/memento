@@ -24,6 +24,7 @@ AC01 repository bootstrap is represented by:
 
 ```bash
 python -m pytest -q
+python -m ruff check .
 PYTHONPATH=src python -m sisyphus_hermes.cli doctor --json
 ```
 
@@ -39,5 +40,20 @@ sisyphus-hermes doctor --json
 - AC01_repo_bootstrap: `tests/test_bootstrap.py` verifies required files and
   package import smoke behavior.
 - AC02_plugin_registration: `tests/test_plugin_registration.py` verifies the
-  runtime-light `register(ctx)` entry point against a fake Hermes context.
-- Later ACs are intentionally scaffolded but not claimed complete yet.
+  runtime-light `register(ctx)` entry point and full `sisyphus.*` command
+  registration against a fake Hermes context.
+- AC03_command_surface: `src/sisyphus_hermes/commands.py` exposes `init`,
+  `start`, `plan`, `approve-plan`, `status`, `pause`, `resume`, `cancel`,
+  `review`, `report`, and `doctor` handlers with structured results.
+- AC04_draft_to_canonical_plan: `approve-plan` promotes draft plans to
+  canonical and blocks normal execution until a canonical plan exists unless a
+  bounded spike is explicitly allowed.
+- AC05_durable_state / AC22_sqlite_fallback_contract: `SQLiteStateStore`
+  persists runs, plans, tasks, gates, evidence, and append-only audit events
+  across process restarts.
+- AC07_preflight_safety / AC08_destructive_guardrails: `safety.py` provides git
+  preflight inspection and destructive-operation classification primitives.
+- AC10_review_gates / AC11_reporting: review gate persistence and
+  Telegram-friendly status/report rendering are covered by tests.
+- Later ACs around Kanban adapter integration, full worker dispatch, bundled
+  role skills, and end-to-end Hermes runtime validation remain in progress.

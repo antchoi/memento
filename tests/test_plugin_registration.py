@@ -18,23 +18,34 @@ def test_plugin_import_has_runtime_light_register_entrypoint():
     assert callable(plugin.register)
 
 
-def test_register_adds_doctor_command_with_metadata_and_structured_result(tmp_path):
+def test_register_adds_full_command_surface_with_metadata_and_structured_result(tmp_path):
     from sisyphus_hermes import plugin
 
     ctx = FakeHermesContext()
 
     result = plugin.register(ctx)
 
-    assert result == {
-        "ok": True,
-        "plugin": "sisyphus-hermes",
-        "registered": True,
-        "commands": ["sisyphus.doctor"],
+    expected = {
+        "sisyphus.init",
+        "sisyphus.start",
+        "sisyphus.plan",
+        "sisyphus.approve-plan",
+        "sisyphus.status",
+        "sisyphus.pause",
+        "sisyphus.resume",
+        "sisyphus.cancel",
+        "sisyphus.review",
+        "sisyphus.report",
+        "sisyphus.doctor",
     }
-    assert set(ctx.commands) == {"sisyphus.doctor"}
+    assert result["ok"] is True
+    assert result["plugin"] == "sisyphus-hermes"
+    assert result["registered"] is True
+    assert set(result["commands"]) == expected
+    assert set(ctx.commands) == expected
 
     handler, metadata = ctx.commands["sisyphus.doctor"]
-    assert metadata["description"] == "Check sisyphus-hermes plugin readiness."
+    assert metadata["description"] == "Run sisyphus-hermes doctor."
 
     command_result = handler({"workspace": str(tmp_path)})
     assert command_result["ok"] is True

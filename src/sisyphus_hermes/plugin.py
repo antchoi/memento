@@ -2,32 +2,33 @@
 
 This module is intentionally runtime-light: importing it must not require a live
 Hermes runtime, Kanban database, gateway process, or optional executor package.
-Concrete command implementations will grow over later acceptance criteria; this
-slice establishes the stable registration contract.
+Concrete command implementations live in :mod:`sisyphus_hermes.commands` and
+remain fake-context-testable.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from inspect import Parameter, signature
-from pathlib import Path
 from typing import Any
+
+from .commands import CommandService, command_names
 
 PLUGIN_NAME = "sisyphus-hermes"
 DOCTOR_COMMAND = "sisyphus.doctor"
 
 
 def _doctor_handler(args: Mapping[str, Any] | None = None, **_kwargs: Any) -> dict[str, Any]:
-    """Return a minimal structured readiness result for smoke tests."""
+    """Return a structured readiness result for smoke tests."""
 
-    payload = dict(args or {})
-    workspace = payload.get("workspace")
-    return {
-        "ok": True,
-        "plugin": PLUGIN_NAME,
-        "command": "doctor",
-        "workspace": str(Path(workspace)) if workspace else None,
-    }
+    return CommandService().doctor(dict(args or {}))
+
+
+def _handler_for(command_name: str) -> Callable[[Mapping[str, Any] | None], dict[str, Any]]:
+    def _handler(args: Mapping[str, Any] | None = None, **_kwargs: Any) -> dict[str, Any]:
+        return CommandService().handler_for(command_name)(dict(args or {}))
+
+    return _handler
 
 
 def _register_command(
@@ -64,13 +65,16 @@ def register(ctx: Any) -> dict[str, Any]:
     commands: list[str] = []
     registrar = getattr(ctx, "register_command", None)
     if callable(registrar):
-        _register_command(
-            registrar,
-            DOCTOR_COMMAND,
-            _doctor_handler,
-            description="Check sisyphus-hermes plugin readiness.",
-        )
-        commands.append(DOCTOR_COMMAND)
+        for command_name in command_names():
+            full_name = f"sisyphus.{command_name}"
+            handler = _doctor_handler if command_name == "doctor" else _handler_for(command_name)
+            _register_command(
+                registrar,
+                full_name,
+                handler,
+                description=f"Run sisyphus-hermes {command_name}.",
+            )
+            commands.append(full_name)
 
     return {
         "ok": True,

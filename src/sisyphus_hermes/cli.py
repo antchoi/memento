@@ -4,22 +4,52 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from sisyphus_hermes import __version__
+from sisyphus_hermes.commands import CommandService, command_names
+from sisyphus_hermes.reporting import render_report, render_status
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sisyphus-hermes")
-    parser.add_argument("command", nargs="?", default="doctor", choices=["doctor"])
+    parser.add_argument("command", nargs="?", default="doctor", choices=command_names())
     parser.add_argument("--json", action="store_true", help="Emit machine-readable output.")
+    parser.add_argument("--workspace", default=str(Path.cwd()), help="Repository/workspace path.")
+    parser.add_argument("--run-id", help="Existing run id.")
+    parser.add_argument("--plan-id", help="Existing plan id.")
+    parser.add_argument("--goal", help="Goal text for start.")
+    parser.add_argument("--title", help="Plan/task title.")
+    parser.add_argument("--body", help="Plan body.")
+    parser.add_argument("--reason", help="Pause/resume/cancel reason.")
+    parser.add_argument("--allow-spike", action="store_true", help="Allow bounded spike without canonical plan.")
     args = parser.parse_args(argv)
 
-    result = {"ok": True, "package": "sisyphus-hermes", "version": __version__}
+    payload = {
+        "workspace": args.workspace,
+        "run_id": args.run_id,
+        "plan_id": args.plan_id,
+        "goal": args.goal,
+        "title": args.title,
+        "body": args.body,
+        "reason": args.reason,
+        "allow_spike": args.allow_spike,
+    }
+    payload = {k: v for k, v in payload.items() if v not in (None, False)}
+    result = CommandService().handler_for(args.command)(payload)
+    result.setdefault("package", "sisyphus-hermes")
+    result.setdefault("version", __version__)
+
     if args.json:
         print(json.dumps(result, sort_keys=True))
+    elif args.command == "status":
+        print(render_status(result))
+    elif args.command == "report":
+        print(result.get("text") or render_report(result))
     else:
-        print(f"sisyphus-hermes {__version__}: doctor ok")
-    return 0
+        status = "ok" if result.get("ok") else f"error: {result.get('error', 'unknown')}"
+        print(f"sisyphus-hermes {__version__}: {args.command} {status}")
+    return 0 if result.get("ok") else 1
 
 
 if __name__ == "__main__":  # pragma: no cover
