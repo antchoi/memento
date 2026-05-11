@@ -21,7 +21,40 @@ The plugin can also be exercised without installation by using the source path:
 
 ```bash
 PYTHONPATH=src python -m sisyphus_hermes.cli doctor --json
+PYTHONPATH=src python -m sisyphus_hermes.cli sample-smoke --workspace /tmp/sisyphus-hermes-sample --json
 ```
+
+For the full local release-candidate check, run:
+
+```bash
+scripts/verify-local.sh
+```
+
+## Hermes plugin registration
+
+The local Hermes plugin entry point is `sisyphus_hermes.plugin:register`. After
+editable installation, configure Hermes to load that module and call
+`register(ctx)`. The context is expected to expose
+`register_command(name, handler, **metadata)`. Registration creates the
+`sisyphus.*` command namespace and returns structured metadata listing the
+registered commands.
+
+Smoke/debug sequence:
+
+```bash
+sisyphus-hermes doctor --json
+sisyphus-hermes sample-smoke --workspace /tmp/sisyphus-hermes-sample --json
+```
+
+`doctor` checks package import readiness, the `sisyphus-hermes` console script
+metadata, `plugin.register(ctx)` against a fake Hermes context, bundled skill
+frontmatter, workspace `.sisyphus/` writability, generated runtime state
+`.gitignore` coverage, local SQLite readiness, and OpenCode/oh-my-openagent
+import independence. Runtime artifacts are project-local:
+
+- `.sisyphus/state.sqlite3` — SQLite lifecycle source of truth when Kanban is unavailable;
+- `.sisyphus/executor-outbox.jsonl` — append-only external executor handoff log;
+- `.sisyphus/kanban.json` — dependency-free local Kanban adapter state.
 
 ## State model and recovery
 

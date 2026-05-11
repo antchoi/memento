@@ -5,7 +5,8 @@
 ## Runtime boundary
 
 - `sisyphus_hermes.plugin.register(ctx)` is runtime-light and safe to import without Hermes gateway, Kanban, or optional executor packages.
-- `doctor` mechanically scans core module imports for OpenCode/oh-my-openagent packages and reports `opencode_import_scan` so AC15 can be checked without relying on the developer machine's installed tools.
+- Local Hermes registration loads `sisyphus_hermes.plugin:register`; a Hermes-like context only needs `register_command(name, handler, **metadata)`, and the fake-context tests are the executable registration contract.
+- `doctor` mechanically checks package import readiness, console-script metadata, `plugin.register(ctx)` smoke output, bundled skill frontmatter, workspace `.sisyphus/` writability, runtime `.gitignore` coverage, and the OpenCode/oh-my-openagent import independence scan.
 - The initial command surface is registered as `sisyphus.*` commands:
   - `init`
   - `start`

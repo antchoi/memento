@@ -44,6 +44,31 @@ sample workspace, runs `doctor`, creates a sample run, enqueues/dispatches/
 claims/completes a sample outbox task without spawning an executor process, and
 proves `status`/`report` can rebuild from the project-local SQLite source of
 truth.
+
+For release-candidate verification, run the bundled smoke script:
+
+```bash
+scripts/verify-local.sh
+```
+
+`doctor` reports the concrete readiness checks that matter for local Hermes use:
+package import, console script metadata, `plugin.register(ctx)` smoke output,
+bundled skill frontmatter, workspace `.sisyphus/` writability, runtime path
+locations, `.gitignore` coverage for generated state, and the OpenCode import
+independence scan.
+
+## Hermes plugin registration path
+
+After `python -m pip install -e .`, configure Hermes to load the local Python
+plugin module `sisyphus_hermes.plugin` and call its `register(ctx)` entry point.
+The registration boundary is intentionally runtime-light and registers the
+command namespace as `sisyphus.*`, including `sisyphus.doctor` and
+`sisyphus.sample-smoke`. A minimal Hermes-like context only needs a
+`register_command(name, handler, **metadata)` method; the fake-context tests in
+`tests/test_plugin_registration.py` are the executable contract for this path.
+If registration fails, run `sisyphus-hermes doctor --json` and inspect
+`checks.plugin_register_smoke`, `plugin_registration.commands`, and
+`checks.cli_entrypoint` first.
 ## Acceptance criteria traceability
 
 - AC01_repo_bootstrap: `tests/test_bootstrap.py` verifies required files and

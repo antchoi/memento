@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import ast
+import importlib
+import tomllib
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
@@ -71,6 +73,102 @@ def _scan_core_imports_for_optional_executor_dependencies() -> dict[str, Any]:
     }
 
 
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _package_import_check() -> dict[str, Any]:
+    try:
+        module = importlib.import_module("sisyphus_hermes")
+    except Exception as exc:  # pragma: no cover - defensive diagnostic path
+        return {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
+    return {
+        "status": "ok",
+        "module": module.__name__,
+        "version": getattr(module, "__version__", None),
+    }
+
+
+def _cli_entrypoint_check() -> dict[str, Any]:
+    pyproject_path = _project_root() / "pyproject.toml"
+    try:
+        pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+        target = pyproject["project"]["scripts"]["sisyphus-hermes"]
+    except Exception as exc:  # pragma: no cover - defensive diagnostic path
+        return {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
+    return {
+        "status": "ok" if target == "sisyphus_hermes.cli:main" else "blocked",
+        "console_script": "sisyphus-hermes",
+        "target": target,
+    }
+
+
+class _DoctorHermesContext:
+    def __init__(self) -> None:
+        self.commands: dict[str, Any] = {}
+
+    def register_command(self, name: str, handler: Any, **metadata: Any) -> None:
+        self.commands[name] = {"handler": handler, "metadata": metadata}
+
+
+def _plugin_registration_smoke() -> dict[str, Any]:
+    try:
+        plugin = importlib.import_module("sisyphus_hermes.plugin")
+        ctx = _DoctorHermesContext()
+        result = plugin.register(ctx)
+    except Exception as exc:  # pragma: no cover - defensive diagnostic path
+        return {"status": "error", "error": f"{type(exc).__name__}: {exc}", "commands": []}
+    commands = sorted(ctx.commands)
+    return {
+        "status": "ok" if result.get("ok") and "sisyphus.doctor" in commands else "blocked",
+        "registered": bool(result.get("registered")),
+        "commands": commands,
+    }
+
+
+def _workspace_writable_check(workspace: Path) -> dict[str, Any]:
+    sisyphus_dir = workspace / ".sisyphus"
+    probe = sisyphus_dir / ".doctor-write-probe"
+    try:
+        sisyphus_dir.mkdir(parents=True, exist_ok=True)
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+    except Exception as exc:  # pragma: no cover - defensive diagnostic path
+        return {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
+    return {"status": "ok", "path": str(sisyphus_dir)}
+
+
+def _runtime_gitignored_check() -> dict[str, Any]:
+    gitignore_path = _project_root() / ".gitignore"
+    text = gitignore_path.read_text(encoding="utf-8") if gitignore_path.exists() else ""
+    required = (".sisyphus/", ".hermes/runtime/", ".ouroboros/data/", ".ouroboros/runs/")
+    missing = [pattern for pattern in required if pattern not in text]
+    return {"status": "ok" if not missing else "blocked", "missing": missing}
+
+
+def _bundled_skills_check() -> dict[str, Any]:
+    skills_dir = _project_root() / "skills"
+    offenders: dict[str, str] = {}
+    skill_files = sorted(skills_dir.glob("*/SKILL.md"))
+    for path in skill_files:
+        text = path.read_text(encoding="utf-8")
+        if not text.startswith("---\n"):
+            offenders[str(path.relative_to(_project_root()))] = "missing_frontmatter_open"
+            continue
+        try:
+            _, frontmatter, _body = text.split("---", maxsplit=2)
+        except ValueError:
+            offenders[str(path.relative_to(_project_root()))] = "missing_frontmatter_close"
+            continue
+        if "name:" not in frontmatter or "description:" not in frontmatter:
+            offenders[str(path.relative_to(_project_root()))] = "missing_name_or_description"
+    return {
+        "status": "ok" if skill_files and not offenders else "blocked",
+        "count": len(skill_files),
+        "frontmatter_offenders": offenders,
+    }
+
+
 def command_names() -> tuple[str, ...]:
     return REQUIRED_COMMANDS
 
@@ -110,14 +208,45 @@ class CommandService:
         db_path = SQLiteStateStore.default_path(workspace)
         store = SQLiteStateStore(db_path)
         import_scan = _scan_core_imports_for_optional_executor_dependencies()
+        package_import = _package_import_check()
+        cli_entrypoint = _cli_entrypoint_check()
+        plugin_registration = _plugin_registration_smoke()
+        workspace_writable = _workspace_writable_check(workspace)
+        runtime_gitignored = _runtime_gitignored_check()
+        bundled_skills = _bundled_skills_check()
+        outbox_path = OutboxExecutorAdapter.default_path(workspace)
         return {
             "ok": True,
             "command": "doctor",
             "plugin": "sisyphus-hermes",
             "workspace": str(workspace),
+            "local_install": {
+                "module": package_import.get("module"),
+                "version": package_import.get("version"),
+                "console_script": cli_entrypoint.get("console_script"),
+                "entrypoint_target": cli_entrypoint.get("target"),
+            },
+            "plugin_registration": {
+                "registered": plugin_registration.get("registered", False),
+                "commands": plugin_registration.get("commands", []),
+            },
+            "runtime_paths": {
+                "state": str(db_path),
+                "executor_outbox": str(outbox_path),
+                "workspace_state_dir": str(workspace / ".sisyphus"),
+            },
             "checks": {
                 "sqlite": "ok" if store.path.exists() else "missing",
                 "kanban": "optional_unavailable_using_sqlite",
+                "package_import": package_import["status"],
+                "cli_entrypoint": cli_entrypoint["status"],
+                "plugin_register_smoke": plugin_registration["status"],
+                "workspace_writable": workspace_writable["status"],
+                "runtime_gitignored": runtime_gitignored["status"],
+                "runtime_gitignore_missing": runtime_gitignored["missing"],
+                "bundled_skills": bundled_skills["status"],
+                "bundled_skill_count": bundled_skills["count"],
+                "bundled_skill_frontmatter_offenders": bundled_skills["frontmatter_offenders"],
                 "opencode_dependency": "not_required",
                 "opencode_import_scan": import_scan["status"],
                 "core_modules_scanned": import_scan["core_modules_scanned"],
