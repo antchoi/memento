@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from .domain import Evidence, GateKind, GateStatus, ReviewGate, RunStatus, SisyphusPlan, utc_now
 from .events import enqueue_event_task
+from .executors import ExecutorDispatchRequest, OutboxExecutorAdapter
 from .state import SQLiteStateStore
 from .workers import build_worker_payload
 
@@ -26,6 +27,7 @@ REQUIRED_COMMANDS = (
     "sample-smoke",
     "enqueue-event",
     "worker-payload",
+    "dispatch-task",
 )
 FORBIDDEN_CORE_IMPORT_ROOTS = frozenset({"opencode", "oh_my_openagent"})
 
@@ -299,6 +301,45 @@ class CommandService:
     def worker_payload(self, args: dict[str, Any]) -> dict[str, Any]:
         """Return explicit scoped context for a task; does not dispatch it."""
 
+        result = self._build_worker_payload_result(args)
+        if not result.get("ok"):
+            return result
+        return {"ok": True, "command": "worker-payload", "payload": result["payload"].to_record()}
+
+    def dispatch_task(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Queue a scoped worker payload for an external executor peer."""
+
+        result = self._build_worker_payload_result(args)
+        if not result.get("ok"):
+            return result
+        payload = result["payload"]
+        workspace = Path(payload.repo_path)
+        executor = str(args.get("executor") or "hermes-profile")
+        adapter = OutboxExecutorAdapter(args.get("outbox_path") or OutboxExecutorAdapter.default_path(workspace))
+        dispatch = adapter.dispatch(
+            ExecutorDispatchRequest(
+                payload=payload,
+                executor=executor,
+                reason=str(args.get("reason") or "manual dispatch"),
+            )
+        )
+        store = self._store_for(args)
+        store.append_audit(
+            payload.run_id,
+            actor="sisyphus_lifecycle_worker",
+            action="task.dispatch_queued",
+            summary=f"Queued task for {executor}",
+            payload={
+                "task_id": payload.task_id,
+                "executor": executor,
+                "outbox_path": dispatch["outbox_path"],
+                "dispatch_id": dispatch["dispatch_id"],
+                "executor_invoked": False,
+            },
+        )
+        return {"command": "dispatch-task", **dispatch}
+
+    def _build_worker_payload_result(self, args: dict[str, Any]) -> dict[str, Any]:
         store = self._store_for(args)
         run = store.get_run(str(args["run_id"]))
         if run is None:
@@ -307,8 +348,7 @@ class CommandService:
         task = next((candidate for candidate in store.list_tasks(run.id) if candidate.id == task_id), None)
         if task is None:
             return {"ok": False, "error": "task_not_found", "task_id": task_id}
-        payload = build_worker_payload(run, task)
-        return {"ok": True, "command": "worker-payload", "payload": payload.to_record()}
+        return {"ok": True, "payload": build_worker_payload(run, task)}
 
     def add_evidence(self, run_id: str, *, kind: str, summary: str, uri: str | None = None) -> Evidence:
         store = self._store_for({})

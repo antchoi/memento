@@ -20,6 +20,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plan-id", help="Existing plan id.")
     parser.add_argument("--goal", help="Goal text for start.")
     parser.add_argument("--title", help="Plan/task title.")
+    parser.add_argument("--task-id", help="Existing task id.")
+    parser.add_argument("--executor", help="Executor peer name for dispatch-task.")
+    parser.add_argument("--outbox-path", help="Executor outbox JSONL path for dispatch-task.")
     parser.add_argument("--body", help="Plan body.")
     parser.add_argument("--reason", help="Pause/resume/cancel reason.")
     parser.add_argument("--allow-spike", action="store_true", help="Allow bounded spike without canonical plan.")
@@ -31,6 +34,9 @@ def main(argv: list[str] | None = None) -> int:
         "plan_id": args.plan_id,
         "goal": args.goal,
         "title": args.title,
+        "task_id": args.task_id,
+        "executor": args.executor,
+        "outbox_path": args.outbox_path,
         "body": args.body,
         "reason": args.reason,
         "allow_spike": args.allow_spike,

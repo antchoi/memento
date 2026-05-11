@@ -25,6 +25,8 @@ PYTHONPATH=src python -m sisyphus_hermes.cli doctor --json
 ## State model and recovery
 
 - The intended production source of truth is Hermes Kanban.
+- For local/practical Kanban work, `JsonKanbanAdapter` stores Kanban-shaped task
+  cards in `.sisyphus/kanban.json` and preserves cards across process restarts.
 - When Kanban is unavailable, the local SQLite fallback at
   `.sisyphus/state.sqlite3` stores runs, plans, tasks, review gates, evidence,
   and audit events.
@@ -42,6 +44,8 @@ sisyphus-hermes start --workspace /path/to/repo --goal "Ship the plugin MVP"
 sisyphus-hermes plan --run-id run_... --title "MVP plan" --body "..."
 sisyphus-hermes approve-plan --run-id run_... --plan-id plan_...
 sisyphus-hermes status --run-id run_...
+sisyphus-hermes worker-payload --run-id run_... --task-id task_... --json
+sisyphus-hermes dispatch-task --run-id run_... --task-id task_... --executor hermes-profile --json
 sisyphus-hermes report --run-id run_...
 sisyphus-hermes pause --run-id run_... --reason "waiting for review"
 sisyphus-hermes resume --run-id run_...
@@ -92,5 +96,9 @@ OpenCode, Codex, Claude Code, or Hermes profile workers can be implemented as
 future executor adapters under `src/sisyphus_hermes/executors/`. They are peer
 executors, not the lifecycle source of truth. The MVP `NoopExecutorAdapter`
 intentionally returns `dispatched=false` / `executor_invoked=false` so a queued
-worker payload cannot be mistaken for executed implementation work. The core
-plugin must continue to pass tests without those tools installed.
+worker payload cannot be mistaken for executed implementation work. The
+`OutboxExecutorAdapter` is the first practical handoff adapter: `dispatch-task`
+writes an auditable JSONL record to `.sisyphus/executor-outbox.jsonl`, returns
+`dispatched=true`, and still returns `executor_invoked=false` because no child
+process is spawned by core lifecycle code. The core plugin must continue to pass
+tests without those tools installed.

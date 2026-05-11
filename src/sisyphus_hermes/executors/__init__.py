@@ -9,9 +9,13 @@ not execute implementation work directly.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
+from uuid import uuid4
 
+from sisyphus_hermes.domain import utc_now
 from sisyphus_hermes.workers import WorkerPayload
 
 
@@ -51,4 +55,62 @@ class NoopExecutorAdapter:
         }
 
 
-__all__ = ["ExecutorAdapter", "ExecutorDispatchRequest", "NoopExecutorAdapter"]
+@dataclass(frozen=True, kw_only=True)
+class ExecutorOutboxRecord:
+    """Durable handoff record for an external executor peer."""
+
+    payload: WorkerPayload
+    executor: str
+    reason: str
+    id: str = field(default_factory=lambda: f"dispatch_{uuid4().hex[:12]}")
+    created_at: str = field(default_factory=utc_now)
+    invocation_policy: str = "outbox_only_no_process_spawn"
+
+    def to_record(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "created_at": self.created_at,
+            "executor": self.executor,
+            "reason": self.reason,
+            "invocation_policy": self.invocation_policy,
+            "payload": self.payload.to_record(),
+        }
+
+
+class OutboxExecutorAdapter:
+    """Queue explicit dispatch requests without spawning child processes."""
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def default_path(workspace: str | Path) -> Path:
+        return Path(workspace) / ".sisyphus" / "executor-outbox.jsonl"
+
+    def dispatch(self, request: ExecutorDispatchRequest) -> dict[str, Any]:
+        record = ExecutorOutboxRecord(
+            payload=request.payload, executor=request.executor, reason=request.reason
+        )
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record.to_record(), sort_keys=True) + "\n")
+        return {
+            "ok": True,
+            "dispatched": True,
+            "executor_invoked": False,
+            "executor": request.executor,
+            "reason": request.reason,
+            "outbox_path": str(self.path),
+            "dispatch_id": record.id,
+            "payload": request.payload.to_record(),
+            "invocation_policy": record.invocation_policy,
+        }
+
+
+__all__ = [
+    "ExecutorAdapter",
+    "ExecutorDispatchRequest",
+    "ExecutorOutboxRecord",
+    "NoopExecutorAdapter",
+    "OutboxExecutorAdapter",
+]

@@ -40,6 +40,7 @@ def test_register_adds_full_command_surface_with_metadata_and_structured_result(
         "sisyphus.sample-smoke",
         "sisyphus.enqueue-event",
         "sisyphus.worker-payload",
+        "sisyphus.dispatch-task",
     }
     assert result["ok"] is True
     assert result["plugin"] == "sisyphus-hermes"

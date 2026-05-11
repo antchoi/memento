@@ -52,7 +52,7 @@ rebuild from the project-local SQLite source of truth.
 - AC03_command_surface: `src/sisyphus_hermes/commands.py` exposes `init`,
   `start`, `plan`, `approve-plan`, `status`, `pause`, `resume`, `cancel`,
   `review`, `report`, `doctor`, `sample-smoke`, `enqueue-event`, and
-  `worker-payload` handlers with structured results.
+  `worker-payload`, and `dispatch-task` handlers with structured results.
 - AC04_draft_to_canonical_plan: `approve-plan` promotes draft plans to
   canonical and blocks normal execution until a canonical plan exists unless a
   bounded spike is explicitly allowed.
@@ -61,14 +61,16 @@ rebuild from the project-local SQLite source of truth.
   across process restarts; command `status`/`report` results expose the active
   fallback backend and project-local `.sisyphus/state.sqlite3` path.
 - AC06_kanban_boundary: `state.py` defines a fake-testable Kanban adapter
-  protocol and falls back to project-local SQLite when Kanban is unavailable.
+  protocol, `kanban.py` provides a dependency-free JSON Kanban board adapter,
+  and the runtime falls back to project-local SQLite when Kanban is unavailable.
 - AC07_preflight_safety / AC08_destructive_guardrails: `safety.py` provides git
   preflight inspection and destructive-operation classification primitives.
 - AC09_worker_context / optional executor extension: `workers.py` builds
   explicit scoped payloads with repo path, task description, acceptance
   criteria, safety constraints, and reporting contract; `executors/` exposes a
-  no-op adapter boundary for future peer executors. No payload relies on hidden
-  chat/TUI context, and the MVP adapter never dispatches implementation work.
+  no-op adapter plus a durable JSONL outbox adapter for explicit peer handoff.
+  No payload relies on hidden chat/TUI context, and outbox dispatch records
+  `executor_invoked=false` until a separate peer consumes it.
 - AC10_review_gates / AC11_reporting: review gate persistence and
   Telegram-friendly status/report rendering are covered by tests.
 - AC12_cancellation_pause: pause/cancel transitions record audit events and

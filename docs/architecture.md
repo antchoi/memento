@@ -18,8 +18,10 @@
   - `review`
   - `report`
   - `doctor`
+  - `sample-smoke`
   - `enqueue-event`
   - `worker-payload`
+  - `dispatch-task`
 - Internal `TypeError` raised by the registrar is intentionally not swallowed; registration failures must be visible.
 
 ## Seed runtime closure
@@ -71,6 +73,9 @@ SQLite fallback contract in `src/sisyphus_hermes/state.py`:
 
 - `KanbanAdapter` defines the minimal task persistence/listing protocol for a
   future Hermes Kanban implementation;
+- `JsonKanbanAdapter` in `src/sisyphus_hermes/kanban.py` provides a practical
+  dependency-free board at `.sisyphus/kanban.json` for local collaboration,
+  smoke testing, and adapter contract development;
 - `UnavailableKanbanAdapter` makes fallback behavior explicit when no live
   Kanban database is present;
 - schema initialization is idempotent;
@@ -112,8 +117,11 @@ must not rely on parent chat history or OpenCode/TUI state.
 `src/sisyphus_hermes/executors/` contains the optional executor peer boundary.
 The MVP ships `NoopExecutorAdapter`, which returns `dispatched=False` and
 `executor_invoked=False` even when the requested peer is named `opencode`,
-`codex`, or `claude-code`. Real adapters can be added later, but they must keep
-Sisyphus durable state as source of truth rather than supervising external logs.
+`codex`, or `claude-code`. It also ships `OutboxExecutorAdapter`, which writes a
+JSONL dispatch record to `.sisyphus/executor-outbox.jsonl` and returns
+`dispatched=True` while still recording `executor_invoked=False`. That makes
+handoff explicit and auditable without spawning child processes or supervising
+external logs.
 
 ## Cron/event boundary
 

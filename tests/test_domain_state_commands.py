@@ -87,6 +87,7 @@ def test_command_surface_has_all_required_handlers(tmp_path: Path) -> None:
         "sample-smoke",
         "enqueue-event",
         "worker-payload",
+        "dispatch-task",
     }
     assert set(command_names()) == expected
 
