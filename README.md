@@ -38,4 +38,6 @@ sisyphus-hermes doctor --json
 
 - AC01_repo_bootstrap: `tests/test_bootstrap.py` verifies required files and
   package import smoke behavior.
+- AC02_plugin_registration: `tests/test_plugin_registration.py` verifies the
+  runtime-light `register(ctx)` entry point against a fake Hermes context.
 - Later ACs are intentionally scaffolded but not claimed complete yet.
