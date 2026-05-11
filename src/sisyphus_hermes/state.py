@@ -10,7 +10,7 @@ import json
 import sqlite3
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from .domain import (
     AuditEvent,
@@ -26,6 +26,35 @@ from .domain import (
 
 T = TypeVar("T")
 
+
+class KanbanAdapter(Protocol):
+    """Boundary for a future Hermes Kanban-backed source of truth.
+
+    Core tests use fake implementations of this protocol or the SQLite fallback;
+    a live Hermes Kanban database is never required for import or unit tests.
+    """
+
+    available: bool
+
+    def create_or_update_task(self, task: SisyphusTask) -> SisyphusTask:
+        """Persist a Sisyphus task in Kanban-compatible storage."""
+
+    def list_tasks(self, run_id: str) -> list[SisyphusTask]:
+        """Return Kanban-backed tasks for a run."""
+
+
+class UnavailableKanbanAdapter:
+    """Null adapter used when Hermes Kanban is unavailable."""
+
+    available = False
+
+    def create_or_update_task(self, task: SisyphusTask) -> SisyphusTask:
+        raise RuntimeError("Hermes Kanban is unavailable")
+
+    def list_tasks(self, run_id: str) -> list[SisyphusTask]:
+        raise RuntimeError("Hermes Kanban is unavailable")
+
+
 _TABLE_MODELS = {
     "runs": SisyphusRun,
     "plans": SisyphusPlan,
@@ -39,8 +68,10 @@ _TABLE_MODELS = {
 class SQLiteStateStore:
     """Project-local SQLite source of truth when Hermes Kanban is unavailable."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, kanban: KanbanAdapter | None = None) -> None:
         self.path = Path(path)
+        self.kanban: KanbanAdapter = kanban or UnavailableKanbanAdapter()
+        self.source_of_truth = "kanban" if self.kanban.available else "sqlite"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
@@ -145,9 +176,15 @@ class SQLiteStateStore:
         return next((p for p in self.list_plans(run_id) if p.status == PlanStatus.CANONICAL), None)
 
     def save_task(self, task: SisyphusTask) -> SisyphusTask:
-        return self._save("tasks", task)
+        saved = self._save("tasks", task)
+        if self.kanban.available:
+            saved = self.kanban.create_or_update_task(saved)
+            self._save("tasks", saved)
+        return saved
 
     def list_tasks(self, run_id: str) -> list[SisyphusTask]:
+        if self.kanban.available:
+            return self.kanban.list_tasks(run_id)
         return self._list("tasks", run_id)
 
     def save_gate(self, gate: ReviewGate) -> ReviewGate:

@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .domain import Evidence, GateKind, GateStatus, ReviewGate, RunStatus, SisyphusPlan, utc_now
+from .events import enqueue_event_task
 from .state import SQLiteStateStore
+from .workers import build_worker_payload
 
 REQUIRED_COMMANDS = (
     "init",
@@ -208,6 +210,27 @@ class CommandService:
 
         status = self.status(args)
         return {**status, "command": "report", "text": render_report(status), "generated_at": utc_now()}
+
+    def enqueue_event(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Create/update durable work from cron/webhook payloads without execution."""
+
+        store = self._store_for(args)
+        result = enqueue_event_task(store, args)
+        return {"command": "enqueue-event", **result.to_record()}
+
+    def worker_payload(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Return explicit scoped context for a task; does not dispatch it."""
+
+        store = self._store_for(args)
+        run = store.get_run(str(args["run_id"]))
+        if run is None:
+            return {"ok": False, "error": "run_not_found"}
+        task_id = str(args["task_id"])
+        task = next((candidate for candidate in store.list_tasks(run.id) if candidate.id == task_id), None)
+        if task is None:
+            return {"ok": False, "error": "task_not_found", "task_id": task_id}
+        payload = build_worker_payload(run, task)
+        return {"ok": True, "command": "worker-payload", "payload": payload.to_record()}
 
     def add_evidence(self, run_id: str, *, kind: str, summary: str, uri: str | None = None) -> Evidence:
         store = self._store_for({})

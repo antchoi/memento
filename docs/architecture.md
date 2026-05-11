@@ -37,8 +37,13 @@ The intended production order is:
 1. Hermes Kanban adapter as the primary collaboration/source-of-truth layer.
 2. SQLite fallback for local durability, import smoke tests, and recovery.
 
-The current implementation provides the SQLite fallback contract in `src/sisyphus_hermes/state.py`:
+The current implementation provides a fake-testable Kanban boundary plus the
+SQLite fallback contract in `src/sisyphus_hermes/state.py`:
 
+- `KanbanAdapter` defines the minimal task persistence/listing protocol for a
+  future Hermes Kanban implementation;
+- `UnavailableKanbanAdapter` makes fallback behavior explicit when no live
+  Kanban database is present;
 - schema initialization is idempotent;
 - all lifecycle entities are persisted as typed JSON records;
 - audit events are append-only;
@@ -66,3 +71,18 @@ The current command implementation blocks normal execution (`start` against an e
 - guardrails for `git reset --hard`, `git clean`, force push, direct protected-branch push, and merge commands.
 
 `src/sisyphus_hermes/reporting.py` emits Telegram-friendly Markdown without tables so reports remain readable in chat channels.
+
+## Worker dispatch boundary
+
+`src/sisyphus_hermes/workers.py` builds explicit `WorkerPayload` records for
+future Hermes profile, delegate_task, or external executor adapters. Payloads
+include repo path, goal, task description, acceptance criteria, safety
+constraints, and a reporting contract. They intentionally state that workers
+must not rely on parent chat history or OpenCode/TUI state.
+
+## Cron/event boundary
+
+`src/sisyphus_hermes/events.py` converts cron/webhook payloads into durable
+`SisyphusTask` records and append-only audit events. Event ingestion returns
+`dispatched=False` and `executor_invoked=False`; implementation work must be
+started by an explicit lifecycle/worker action after safety and review checks.

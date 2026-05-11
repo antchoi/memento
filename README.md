@@ -51,9 +51,21 @@ sisyphus-hermes doctor --json
 - AC05_durable_state / AC22_sqlite_fallback_contract: `SQLiteStateStore`
   persists runs, plans, tasks, gates, evidence, and append-only audit events
   across process restarts.
+- AC06_kanban_boundary: `state.py` defines a fake-testable Kanban adapter
+  protocol and falls back to project-local SQLite when Kanban is unavailable.
 - AC07_preflight_safety / AC08_destructive_guardrails: `safety.py` provides git
   preflight inspection and destructive-operation classification primitives.
+- AC09_worker_context: `workers.py` builds explicit scoped payloads with repo
+  path, task description, acceptance criteria, safety constraints, and reporting
+  contract; no payload relies on hidden chat/TUI context.
 - AC10_review_gates / AC11_reporting: review gate persistence and
   Telegram-friendly status/report rendering are covered by tests.
-- Later ACs around Kanban adapter integration, full worker dispatch, bundled
-  role skills, and end-to-end Hermes runtime validation remain in progress.
+- AC13_bundled_skills: Sisyphus, Metis, and Momus role skills live under
+  `skills/` with trigger/workflow/pitfalls/verification sections.
+- AC14_documentation: `docs/user-guide.md` covers install/setup, command usage,
+  safety, recovery, cron/event task ingestion, and executor extension.
+- AC20_cron_event_to_task_only: `events.py` and `CommandService.enqueue_event`
+  create durable task records from cron/webhook payloads without invoking an
+  executor adapter.
+- Later ACs around full Hermes runtime validation and richer external executor
+  implementations remain in progress.
