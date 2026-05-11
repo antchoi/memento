@@ -3,10 +3,19 @@
 ## Install for local development
 
 ```bash
-python -m pip install -e '.[dev]'
+python -m pip install -e .
+python -m pip install -e '.[dev]'  # optional: test/lint tools
+python -m pytest -q
+python -m ruff check .
+python -m compileall -q src tests
 sisyphus-hermes doctor --json
+sisyphus-hermes sample-smoke --workspace /tmp/sisyphus-hermes-sample --json
+sisyphus-hermes status --workspace /tmp/sisyphus-hermes-sample --json
 ```
 
+`sample-smoke` is the recommended post-install smoke check. It initializes the
+sample workspace, runs `doctor`, creates a sample run, and immediately checks
+`status` against the durable SQLite state.
 The plugin can also be exercised without installation by using the source path:
 
 ```bash
@@ -21,7 +30,9 @@ PYTHONPATH=src python -m sisyphus_hermes.cli doctor --json
   and audit events.
 - Re-running `init` is idempotent and recreates the schema if needed.
 - `status` and `report` rebuild their view from durable state, not from an
-  OpenCode/Codex/Claude TUI or process log.
+  OpenCode/Codex/Claude TUI or process log. Their structured payloads include
+  `state.backend` and `state.path` so operators can verify which fallback store
+  is being used after a process restart.
 
 ## Command examples
 
@@ -52,6 +63,9 @@ gates cover:
 - final acceptance.
 
 Failed gates must produce actionable findings and block or pause advancement.
+Pause/cancel reports include incomplete tasks and any known child process handles
+provided by executor adapters so recovery can happen without reading TUI/process
+logs.
 
 ## Safety model
 
@@ -75,5 +89,8 @@ can decide how to process the queued task after safety and review checks.
 ## Optional executor extension
 
 OpenCode, Codex, Claude Code, or Hermes profile workers can be implemented as
-future executor adapters. They are peer executors, not the lifecycle source of
-truth. The core plugin must continue to pass tests without those tools installed.
+future executor adapters under `src/sisyphus_hermes/executors/`. They are peer
+executors, not the lifecycle source of truth. The MVP `NoopExecutorAdapter`
+intentionally returns `dispatched=false` / `executor_invoked=false` so a queued
+worker payload cannot be mistaken for executed implementation work. The core
+plugin must continue to pass tests without those tools installed.

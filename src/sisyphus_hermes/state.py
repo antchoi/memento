@@ -147,7 +147,7 @@ class SQLiteStateStore:
         return [model.from_record(json.loads(row["record_json"])) for row in rows]
 
     def create_run(self, *, goal: str, workspace: str, actor: str = "founder_user") -> SisyphusRun:
-        run = SisyphusRun(goal=goal, workspace=workspace, actor=actor)
+        run = SisyphusRun(goal=goal, workspace=workspace, actor=actor, source_of_truth=self.source_of_truth)
         return self._save("runs", run, run_id=run.id)
 
     def save_run(self, run: SisyphusRun) -> SisyphusRun:

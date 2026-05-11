@@ -5,6 +5,7 @@
 ## Runtime boundary
 
 - `sisyphus_hermes.plugin.register(ctx)` is runtime-light and safe to import without Hermes gateway, Kanban, or optional executor packages.
+- `doctor` mechanically scans core module imports for OpenCode/oh-my-openagent packages and reports `opencode_import_scan` so AC15 can be checked without relying on the developer machine's installed tools.
 - The initial command surface is registered as `sisyphus.*` commands:
   - `init`
   - `start`
@@ -17,7 +18,35 @@
   - `review`
   - `report`
   - `doctor`
+  - `enqueue-event`
+  - `worker-payload`
 - Internal `TypeError` raised by the registrar is intentionally not swallowed; registration failures must be visible.
+
+## Seed runtime closure
+
+The implementation keeps the Seed vocabulary explicit so runtime state can be
+recovered without relying on hidden chat history or an external TUI:
+
+- Actors: `founder_user`, `hermes_plugin_command_layer`, `metis_planner`,
+  `momus_reviewer`, `sisyphus_lifecycle_worker`, `hephaestus_executor`,
+  `hermes_sheriff`, and future `optional_external_executor_adapter` roles appear
+  in domain defaults, audit events, worker payloads, review gates, or docs.
+- Accepted inputs: workspace/repository path, user goal/task text, plan approval
+  decisions, review decisions, cron/webhook event payloads, safety preflight
+  state, and optional child process handles enter through command payloads.
+- Produced outputs: command result records, run/plan/task/gate/evidence/audit
+  state, SQLite fallback files, Kanban-compatible task records, worker payloads,
+  doctor diagnostics, and Telegram-friendly reports.
+- Runtime context: local macOS/Hermes development, project-local generated state,
+  Hermes Kanban as the intended source of truth, SQLite fallback when Kanban is
+  unavailable, and Hermes-native skills/delegation/process primitives.
+- MVP boundaries: command handlers, durable lifecycle state, safety/reporting,
+  bundled role skills, cron/event task ingestion, and fake-testable adapters are
+  in scope; cloud sync, paid services, production deployment, direct destructive
+  git operations, and log-scraping supervision are out of scope.
+- Deferred extension points: OpenCode, Codex, Claude Code, or Hermes profile
+  workers can be added as optional executor peers only after the core lifecycle
+  remains Hermes-owned and testable without them.
 
 ## Durable lifecycle model
 
@@ -79,6 +108,12 @@ future Hermes profile, delegate_task, or external executor adapters. Payloads
 include repo path, goal, task description, acceptance criteria, safety
 constraints, and a reporting contract. They intentionally state that workers
 must not rely on parent chat history or OpenCode/TUI state.
+
+`src/sisyphus_hermes/executors/` contains the optional executor peer boundary.
+The MVP ships `NoopExecutorAdapter`, which returns `dispatched=False` and
+`executor_invoked=False` even when the requested peer is named `opencode`,
+`codex`, or `claude-code`. Real adapters can be added later, but they must keep
+Sisyphus durable state as source of truth rather than supervising external logs.
 
 ## Cron/event boundary
 

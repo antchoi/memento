@@ -35,7 +35,11 @@ def enqueue_event_task(store: SQLiteStateStore, payload: dict[str, Any]) -> Even
     run_id = str(payload["run_id"])
     title = str(payload.get("title") or payload.get("summary") or "Event task")
     description = str(payload.get("description") or payload.get("body") or title)
-    acceptance_criteria = tuple(payload.get("acceptance_criteria") or ())
+    acceptance_criteria_raw = payload.get("acceptance_criteria") or ()
+    if isinstance(acceptance_criteria_raw, str):
+        acceptance_criteria = (acceptance_criteria_raw,)
+    else:
+        acceptance_criteria = tuple(acceptance_criteria_raw)
     role = str(payload.get("role") or "hephaestus_executor")
     source = str(payload.get("source") or "event")
 

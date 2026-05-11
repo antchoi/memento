@@ -20,6 +20,45 @@ def _latest_by_actor(audit: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return latest
 
 
+def _render_role_latest_actions(audit: list[dict[str, Any]]) -> list[str]:
+    latest = _latest_by_actor(audit)
+    role_lines = ["", "## Role latest actions"]
+    for actor, label in ROLE_LABELS.items():
+        event = latest.get(actor)
+        if event:
+            role_lines.append(f"- {label}: {event.get('action')} — {event.get('summary') or 'no summary'}")
+        else:
+            role_lines.append(f"- {label}: no recorded action yet")
+    return role_lines
+
+
+def _render_pause_cancel_recovery(status: dict[str, Any]) -> list[str]:
+    run = status.get("run", {})
+    if run.get("status") not in {"paused", "cancelled"}:
+        return []
+
+    incomplete_tasks = [
+        task
+        for task in status.get("tasks", [])
+        if task.get("status") not in {"completed", "cancelled"}
+    ]
+    lifecycle_events = [
+        event for event in status.get("audit", []) if event.get("action") in {"run.paused", "run.cancelled"}
+    ]
+    child_handles = []
+    if lifecycle_events:
+        child_handles = lifecycle_events[-1].get("payload", {}).get("child_process_handles") or []
+
+    lines = ["", "## Pause/cancel recovery", f"Incomplete tasks: {len(incomplete_tasks)}"]
+    for task in incomplete_tasks:
+        lines.append(f"- {task.get('title')}: {task.get('status')}")
+    if child_handles:
+        lines.append(f"Known child processes: {', '.join(str(handle) for handle in child_handles)}")
+    else:
+        lines.append("Known child processes: none recorded")
+    return lines
+
+
 def render_status(status: dict[str, Any]) -> str:
     if not status.get("ok"):
         return f"## Sisyphus status\nState: error\nError: {status.get('error', 'unknown')}"
@@ -48,6 +87,8 @@ def render_status(status: dict[str, Any]) -> str:
             f"Evidence: {len(evidence)} item(s)",
             f"Audit events: {len(audit)}",
             f"Next action: {next_action}",
+            *_render_role_latest_actions(audit),
+            *_render_pause_cancel_recovery(status),
         ]
     )
 
@@ -56,15 +97,6 @@ def render_report(status: dict[str, Any]) -> str:
     base = render_status(status)
     if not status.get("ok"):
         return base
-    latest = _latest_by_actor(status.get("audit", []))
-    role_lines = ["", "## Role latest actions"]
-    for actor, label in ROLE_LABELS.items():
-        event = latest.get(actor)
-        if event:
-            role_lines.append(f"- {label}: {event.get('action')} — {event.get('summary') or 'no summary'}")
-        else:
-            role_lines.append(f"- {label}: no recorded action yet")
-
     evidence_lines = ["", "## Evidence"]
     evidence = status.get("evidence", [])
     if evidence:
@@ -73,4 +105,4 @@ def render_report(status: dict[str, Any]) -> str:
     else:
         evidence_lines.append("- none yet")
 
-    return "\n".join([base, *role_lines, *evidence_lines])
+    return "\n".join([base, *evidence_lines])

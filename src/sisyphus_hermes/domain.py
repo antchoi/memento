@@ -73,6 +73,8 @@ class RecordModel:
         for key, value in list(record.items()):
             if isinstance(value, Enum):
                 record[key] = value.value
+            elif isinstance(value, tuple):
+                record[key] = list(value)
         return record
 
     @classmethod

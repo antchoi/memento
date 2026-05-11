@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from typing import Any, Callable
 
@@ -22,7 +23,36 @@ REQUIRED_COMMANDS = (
     "review",
     "report",
     "doctor",
+    "sample-smoke",
+    "enqueue-event",
+    "worker-payload",
 )
+FORBIDDEN_CORE_IMPORT_ROOTS = frozenset({"opencode", "oh_my_openagent"})
+
+
+def _scan_core_imports_for_optional_executor_dependencies() -> dict[str, Any]:
+    """Return a mechanical import scan for core OpenCode independence."""
+
+    source_dir = Path(__file__).resolve().parent
+    offenders: dict[str, list[str]] = {}
+    scanned = 0
+    for path in source_dir.rglob("*.py"):
+        scanned += 1
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imports: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports.update(alias.name.split(".", maxsplit=1)[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imports.add(node.module.split(".", maxsplit=1)[0])
+        forbidden = sorted(imports & FORBIDDEN_CORE_IMPORT_ROOTS)
+        if forbidden:
+            offenders[str(path.relative_to(source_dir.parent))] = forbidden
+    return {
+        "status": "ok" if not offenders else "blocked",
+        "core_modules_scanned": scanned,
+        "offenders": offenders,
+    }
 
 
 def command_names() -> tuple[str, ...]:
@@ -63,6 +93,7 @@ class CommandService:
         workspace = Path(args.get("workspace") or Path.cwd())
         db_path = SQLiteStateStore.default_path(workspace)
         store = SQLiteStateStore(db_path)
+        import_scan = _scan_core_imports_for_optional_executor_dependencies()
         return {
             "ok": True,
             "command": "doctor",
@@ -72,7 +103,39 @@ class CommandService:
                 "sqlite": "ok" if store.path.exists() else "missing",
                 "kanban": "optional_unavailable_using_sqlite",
                 "opencode_dependency": "not_required",
+                "opencode_import_scan": import_scan["status"],
+                "core_modules_scanned": import_scan["core_modules_scanned"],
+                "opencode_import_offenders": import_scan["offenders"],
             },
+        }
+
+    def sample_smoke(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Run the local install/load smoke path against a sample project."""
+
+        workspace = str(args.get("workspace") or Path.cwd())
+        sample_goal = str(args.get("goal") or "Verify sisyphus-hermes local sample project")
+        init_result = self.init({"workspace": workspace})
+        doctor_result = self.doctor({"workspace": workspace})
+        start_result = self.start({"workspace": workspace, "goal": sample_goal})
+        if not start_result.get("ok"):
+            return {
+                "ok": False,
+                "command": "sample-smoke",
+                "workspace": workspace,
+                "init": init_result,
+                "doctor": doctor_result,
+                "start": start_result,
+            }
+        status_result = self.status({"workspace": workspace, "run_id": start_result["run"]["id"]})
+        return {
+            "ok": bool(init_result.get("ok") and doctor_result.get("ok") and status_result.get("ok")),
+            "command": "sample-smoke",
+            "workspace": workspace,
+            "sample_project": {"workspace": workspace, "goal": sample_goal},
+            "init": init_result,
+            "doctor": doctor_result,
+            "start": start_result,
+            "status": status_result,
         }
 
     def start(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -156,6 +219,7 @@ class CommandService:
         return {
             "ok": True,
             "command": "status",
+            "state": {"backend": store.source_of_truth, "path": str(store.path)},
             "run": run.to_record(),
             "plans": [p.to_record() for p in store.list_plans(run.id)],
             "tasks": [t.to_record() for t in store.list_tasks(run.id)],
@@ -177,11 +241,15 @@ class CommandService:
         store = self._store_for(args)
         run_id = str(args["run_id"])
         run = store.set_run_status(run_id, status)
+        payload = {}
+        if args.get("child_process_handles"):
+            payload["child_process_handles"] = list(args["child_process_handles"])
         store.append_audit(
             run_id,
             actor="sisyphus_lifecycle_worker",
             action=action,
             summary=str(args.get("reason") or ""),
+            payload=payload,
         )
         return {"ok": True, "command": action.split(".")[-1], "run": run.to_record()}
 
@@ -215,6 +283,16 @@ class CommandService:
         """Create/update durable work from cron/webhook payloads without execution."""
 
         store = self._store_for(args)
+        run_id = args.get("run_id")
+        if not run_id:
+            return {"ok": False, "error": "run_id_required", "command": "enqueue-event"}
+        if store.get_run(str(run_id)) is None:
+            return {
+                "ok": False,
+                "error": "run_not_found",
+                "run_id": str(run_id),
+                "command": "enqueue-event",
+            }
         result = enqueue_event_task(store, args)
         return {"command": "enqueue-event", **result.to_record()}
 

@@ -84,6 +84,9 @@ def test_command_surface_has_all_required_handlers(tmp_path: Path) -> None:
         "review",
         "report",
         "doctor",
+        "sample-smoke",
+        "enqueue-event",
+        "worker-payload",
     }
     assert set(command_names()) == expected
 
@@ -116,3 +119,48 @@ def test_init_creates_project_local_sqlite_and_doctor_reports_readiness(tmp_path
     assert doctor["ok"] is True
     assert doctor["checks"]["sqlite"] == "ok"
     sqlite3.connect(db_path).close()
+
+
+def test_project_local_sqlite_fallback_supports_full_lifecycle_across_service_reopen(tmp_path: Path) -> None:
+    workspace = str(tmp_path)
+    first_process = CommandService()
+    first_process.init({"workspace": workspace})
+    run = first_process.start({"workspace": workspace, "goal": "ship plugin"})["run"]
+    draft = first_process.plan(
+        {
+            "workspace": workspace,
+            "run_id": run["id"],
+            "title": "Canonical path",
+            "body": "Plan, approve, review, report.",
+            "acceptance_criteria": ["status exposes sqlite fallback state"],
+        }
+    )["plan"]
+
+    second_process = CommandService()
+    second_process.approve_plan({"workspace": workspace, "run_id": run["id"], "plan_id": draft["id"]})
+    second_process.review(
+        {
+            "workspace": workspace,
+            "run_id": run["id"],
+            "kind": "quality_review",
+            "status": "passed",
+            "summary": "fallback lifecycle verified",
+        }
+    )
+
+    reopened = CommandService()
+    status = reopened.status({"workspace": workspace, "run_id": run["id"]})
+    report = reopened.report({"workspace": workspace, "run_id": run["id"]})
+
+    assert status["ok"] is True
+    assert status["state"] == {
+        "backend": "sqlite",
+        "path": str(tmp_path / ".sisyphus" / "state.sqlite3"),
+    }
+    assert status["run"]["source_of_truth"] == "sqlite"
+    assert status["run"]["current_plan_id"] == draft["id"]
+    assert [plan["status"] for plan in status["plans"]] == [PlanStatus.CANONICAL.value]
+    assert [gate["status"] for gate in status["gates"]] == [GateStatus.PASSED.value, GateStatus.PASSED.value]
+    assert {gate["kind"] for gate in status["gates"]} == {GateKind.PLAN_REVIEW.value, GateKind.QUALITY_REVIEW.value}
+    assert report["state"] == status["state"]
+    assert "Plan: Canonical path" in report["text"]

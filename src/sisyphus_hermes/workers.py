@@ -43,19 +43,6 @@ class WorkerPayload:
         return record
 
 
-class ExecutorAdapter:
-    """Future executor peer boundary.
-
-    Implementations may wrap Hermes profiles, delegate_task, Codex, Claude Code,
-    or OpenCode later. The core lifecycle must not depend on any external
-    executor implementation, and event/cron ingestion must never call this
-    boundary directly.
-    """
-
-    def dispatch(self, payload: WorkerPayload) -> dict[str, Any]:  # pragma: no cover - interface
-        raise NotImplementedError
-
-
 def build_worker_payload(run: SisyphusRun, task: SisyphusTask) -> WorkerPayload:
     """Build a complete worker context packet for a scoped task."""
 

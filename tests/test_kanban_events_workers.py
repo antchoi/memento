@@ -6,6 +6,7 @@ from sisyphus_hermes.commands import CommandService
 from sisyphus_hermes.domain import SisyphusTask
 from sisyphus_hermes.state import SQLiteStateStore
 from sisyphus_hermes.workers import build_worker_payload
+from sisyphus_hermes.executors import NoopExecutorAdapter, ExecutorDispatchRequest
 
 
 class FakeKanbanAdapter:
@@ -66,6 +67,44 @@ def test_cron_event_ingestion_creates_durable_task_but_does_not_dispatch(tmp_pat
     assert status["audit"][-1]["action"] == "task.enqueued_from_event"
 
 
+def test_event_ingestion_normalizes_single_acceptance_criterion_string(tmp_path: Path) -> None:
+    service = CommandService(store=SQLiteStateStore(tmp_path / "state.db"))
+    run = service.start({"goal": "ship", "workspace": str(tmp_path), "allow_spike": True})["run"]
+
+    result = service.enqueue_event(
+        {
+            "run_id": run["id"],
+            "source": "cron",
+            "title": "Nightly health check failed",
+            "acceptance_criteria": "failure is reproduced and reported",
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["task"]["acceptance_criteria"] == ["failure is reproduced and reported"]
+
+
+def test_event_ingestion_rejects_missing_run_id_without_creating_task(tmp_path: Path) -> None:
+    service = CommandService(store=SQLiteStateStore(tmp_path / "state.db"))
+
+    result = service.enqueue_event({"source": "webhook", "title": "orphan event"})
+
+    assert result == {"ok": False, "error": "run_id_required", "command": "enqueue-event"}
+
+
+def test_event_ingestion_rejects_unknown_run_id_without_creating_task(tmp_path: Path) -> None:
+    service = CommandService(store=SQLiteStateStore(tmp_path / "state.db"))
+
+    result = service.enqueue_event({"run_id": "missing", "source": "cron", "title": "orphan event"})
+
+    assert result == {
+        "ok": False,
+        "error": "run_not_found",
+        "run_id": "missing",
+        "command": "enqueue-event",
+    }
+
+
 def test_worker_payload_is_explicit_and_contains_no_hidden_chat_dependency(tmp_path: Path) -> None:
     service = CommandService(store=SQLiteStateStore(tmp_path / "state.db"))
     run = service.start({"goal": "ship", "workspace": str(tmp_path), "allow_spike": True})["run"]
@@ -88,6 +127,15 @@ def test_worker_payload_is_explicit_and_contains_no_hidden_chat_dependency(tmp_p
     assert "verification commands/results" in payload["reporting_contract"]
 
 
+def test_worker_payload_rejects_unknown_task_without_dispatching(tmp_path: Path) -> None:
+    service = CommandService(store=SQLiteStateStore(tmp_path / "state.db"))
+    run = service.start({"goal": "ship", "workspace": str(tmp_path), "allow_spike": True})["run"]
+
+    result = service.worker_payload({"run_id": run["id"], "task_id": "missing"})
+
+    assert result == {"ok": False, "error": "task_not_found", "task_id": "missing"}
+
+
 def test_build_worker_payload_round_trip_from_domain_models(tmp_path: Path) -> None:
     store = SQLiteStateStore(tmp_path / "state.db")
     run = store.create_run(goal="ship", workspace=str(tmp_path))
@@ -106,3 +154,31 @@ def test_build_worker_payload_round_trip_from_domain_models(tmp_path: Path) -> N
     assert payload["task_id"] == task.id
     assert payload["goal"] == "ship"
     assert payload["role"] == "hephaestus_executor"
+
+
+def test_optional_executor_boundary_is_noop_and_never_claims_to_dispatch(tmp_path: Path) -> None:
+    store = SQLiteStateStore(tmp_path / "state.db")
+    run = store.create_run(goal="ship", workspace=str(tmp_path))
+    task = store.save_task(
+        SisyphusTask(
+            run_id=run.id,
+            title="Task",
+            description="Do scoped work",
+            acceptance_criteria=("tests pass",),
+        )
+    )
+    payload = build_worker_payload(run, task)
+
+    result = NoopExecutorAdapter().dispatch(
+        ExecutorDispatchRequest(payload=payload, executor="opencode", reason="future peer stub")
+    )
+
+    assert result == {
+        "ok": True,
+        "dispatched": False,
+        "executor_invoked": False,
+        "executor": "opencode",
+        "reason": "future peer stub",
+        "message": "Optional executor adapters are extension points only in the MVP.",
+        "payload": payload.to_record(),
+    }
