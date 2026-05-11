@@ -106,6 +106,75 @@ class OutboxExecutorAdapter:
             "invocation_policy": record.invocation_policy,
         }
 
+    def list_dispatches(self) -> list[dict[str, Any]]:
+        """Return materialized dispatch state from append-only JSONL events."""
+
+        dispatches: dict[str, dict[str, Any]] = {}
+        for event in self._events():
+            dispatch_id = str(event.get("dispatch_id") or event.get("id"))
+            event_type = str(event.get("type") or "dispatch.queued")
+            current = dispatches.setdefault(
+                dispatch_id,
+                {
+                    "dispatch_id": dispatch_id,
+                    "status": "queued",
+                    "task_id": event.get("payload", {}).get("task_id"),
+                    "run_id": event.get("payload", {}).get("run_id"),
+                    "executor": event.get("executor"),
+                    "claimed_by": None,
+                    "completed_at": None,
+                    "failed_at": None,
+                    "executor_invoked": False,
+                },
+            )
+            if event_type == "dispatch.queued":
+                current.update(
+                    {
+                        "task_id": event.get("payload", {}).get("task_id"),
+                        "run_id": event.get("payload", {}).get("run_id"),
+                        "executor": event.get("executor"),
+                        "executor_invoked": bool(event.get("executor_invoked", False)),
+                    }
+                )
+            elif event_type == "dispatch.claimed":
+                current["status"] = "claimed"
+                current["claimed_by"] = event.get("executor")
+                current["executor"] = event.get("executor") or current.get("executor")
+            elif event_type == "dispatch.completed":
+                current["status"] = "completed"
+                current["completed_at"] = event.get("created_at")
+            elif event_type == "dispatch.failed":
+                current["status"] = "failed"
+                current["failed_at"] = event.get("created_at")
+        return list(dispatches.values())
+
+    def get_dispatch(self, dispatch_id: str) -> dict[str, Any] | None:
+        return next(
+            (dispatch for dispatch in self.list_dispatches() if dispatch["dispatch_id"] == dispatch_id),
+            None,
+        )
+
+    def append_event(self, event_type: str, dispatch_id: str, **payload: Any) -> dict[str, Any]:
+        event = {
+            "type": event_type,
+            "dispatch_id": dispatch_id,
+            "created_at": utc_now(),
+            "executor_invoked": False,
+            **payload,
+        }
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, sort_keys=True) + "\n")
+        return event
+
+    def _events(self) -> list[dict[str, Any]]:
+        if not self.path.exists():
+            return []
+        events: list[dict[str, Any]] = []
+        for line in self.path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                events.append(json.loads(line))
+        return events
+
 
 __all__ = [
     "ExecutorAdapter",

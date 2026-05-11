@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
-from .domain import Evidence, GateKind, GateStatus, ReviewGate, RunStatus, SisyphusPlan, utc_now
+from .domain import (
+    Evidence,
+    GateKind,
+    GateStatus,
+    ReviewGate,
+    RunStatus,
+    SisyphusPlan,
+    TaskStatus,
+    utc_now,
+)
 from .events import enqueue_event_task
 from .executors import ExecutorDispatchRequest, OutboxExecutorAdapter
 from .state import SQLiteStateStore
@@ -28,6 +38,10 @@ REQUIRED_COMMANDS = (
     "enqueue-event",
     "worker-payload",
     "dispatch-task",
+    "list-dispatches",
+    "claim-dispatch",
+    "complete-dispatch",
+    "fail-dispatch",
 )
 FORBIDDEN_CORE_IMPORT_ROOTS = frozenset({"opencode", "oh_my_openagent"})
 
@@ -128,16 +142,57 @@ class CommandService:
                 "doctor": doctor_result,
                 "start": start_result,
             }
-        status_result = self.status({"workspace": workspace, "run_id": start_result["run"]["id"]})
+        run_id = start_result["run"]["id"]
+        event_result = self.enqueue_event(
+            {
+                "workspace": workspace,
+                "run_id": run_id,
+                "title": "Sample lifecycle task",
+                "description": "Exercise outbox dispatch lifecycle without spawning executors.",
+            }
+        )
+        dispatch_result = self.dispatch_task(
+            {"workspace": workspace, "run_id": run_id, "task_id": event_result["task"]["id"]}
+        )
+        claim_result = self.claim_dispatch(
+            {"workspace": workspace, "dispatch_id": dispatch_result["dispatch_id"]}
+        )
+        complete_result = self.complete_dispatch(
+            {
+                "workspace": workspace,
+                "dispatch_id": dispatch_result["dispatch_id"],
+                "summary": "Sample lifecycle completed",
+                "evidence_uri": "file://sample-smoke",
+            }
+        )
+        dispatches_result = self.list_dispatches({"workspace": workspace, "run_id": run_id})
+        status_result = self.status({"workspace": workspace, "run_id": run_id})
+        report_result = self.report({"workspace": workspace, "run_id": run_id})
         return {
-            "ok": bool(init_result.get("ok") and doctor_result.get("ok") and status_result.get("ok")),
+            "ok": bool(
+                init_result.get("ok")
+                and doctor_result.get("ok")
+                and event_result.get("ok")
+                and dispatch_result.get("ok")
+                and claim_result.get("ok")
+                and complete_result.get("ok")
+                and dispatches_result.get("ok")
+                and status_result.get("ok")
+                and report_result.get("ok")
+            ),
             "command": "sample-smoke",
             "workspace": workspace,
             "sample_project": {"workspace": workspace, "goal": sample_goal},
             "init": init_result,
             "doctor": doctor_result,
             "start": start_result,
+            "event": event_result,
+            "dispatch": dispatch_result,
+            "claim": claim_result,
+            "complete": complete_result,
+            "dispatches": dispatches_result,
             "status": status_result,
+            "report": report_result,
         }
 
     def start(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -338,6 +393,134 @@ class CommandService:
             },
         )
         return {"command": "dispatch-task", **dispatch}
+
+    def list_dispatches(self, args: dict[str, Any]) -> dict[str, Any]:
+        adapter = self._outbox_adapter_for(args)
+        dispatches = adapter.list_dispatches()
+        run_id = args.get("run_id")
+        if run_id:
+            dispatches = [dispatch for dispatch in dispatches if dispatch.get("run_id") == run_id]
+        return {
+            "ok": True,
+            "command": "list-dispatches",
+            "outbox_path": str(adapter.path),
+            "dispatches": dispatches,
+        }
+
+    def claim_dispatch(self, args: dict[str, Any]) -> dict[str, Any]:
+        adapter = self._outbox_adapter_for(args)
+        dispatch_id = str(args["dispatch_id"])
+        dispatch = adapter.get_dispatch(dispatch_id)
+        if dispatch is None:
+            return {"ok": False, "error": "dispatch_not_found", "dispatch_id": dispatch_id}
+        if dispatch["status"] in {"completed", "failed"}:
+            return {"ok": False, "error": "dispatch_terminal", **dispatch}
+        executor = str(args.get("executor") or dispatch.get("executor") or "hermes-profile")
+        if dispatch["status"] == "claimed" and dispatch.get("claimed_by") != executor:
+            return {"ok": False, "error": "dispatch_already_claimed", **dispatch}
+        if dispatch["status"] == "claimed":
+            return {"ok": True, "command": "claim-dispatch", **dispatch}
+        adapter.append_event("dispatch.claimed", dispatch_id, executor=executor)
+        store = self._store_for(args)
+        self._set_task_status(store, str(dispatch["run_id"]), str(dispatch["task_id"]), TaskStatus.IN_PROGRESS)
+        store.append_audit(
+            str(dispatch["run_id"]),
+            actor=executor,
+            action="task.dispatch_claimed",
+            summary=f"Claimed dispatch {dispatch_id}",
+            payload={"dispatch_id": dispatch_id, "task_id": dispatch["task_id"], "executor_invoked": False},
+        )
+        claimed = adapter.get_dispatch(dispatch_id)
+        return {"ok": True, "command": "claim-dispatch", **claimed}
+
+    def complete_dispatch(self, args: dict[str, Any]) -> dict[str, Any]:
+        adapter = self._outbox_adapter_for(args)
+        dispatch_id = str(args["dispatch_id"])
+        dispatch = self._require_claimed_dispatch(adapter, dispatch_id)
+        if not dispatch.get("ok", True):
+            return dispatch
+        summary = str(args.get("summary") or "Dispatch completed")
+        evidence_uri = args.get("evidence_uri") or args.get("uri")
+        adapter.append_event(
+            "dispatch.completed",
+            dispatch_id,
+            summary=summary,
+            evidence_uri=evidence_uri,
+        )
+        store = self._store_for(args)
+        run_id = str(dispatch["run_id"])
+        task_id = str(dispatch["task_id"])
+        evidence = store.save_evidence(
+            Evidence(run_id=run_id, kind="dispatch_result", summary=summary, uri=evidence_uri, task_id=task_id)
+        )
+        store.append_audit(
+            run_id,
+            actor=str(dispatch.get("claimed_by") or dispatch.get("executor") or "hephaestus_executor"),
+            action="evidence.added",
+            summary=summary,
+            payload={"dispatch_id": dispatch_id, "evidence_id": evidence.id},
+        )
+        self._set_task_status(store, run_id, task_id, TaskStatus.COMPLETED)
+        store.append_audit(
+            run_id,
+            actor="sisyphus_lifecycle_worker",
+            action="task.completed",
+            summary=summary,
+            payload={"dispatch_id": dispatch_id, "task_id": task_id, "executor_invoked": False},
+        )
+        completed = adapter.get_dispatch(dispatch_id)
+        return {"ok": True, "command": "complete-dispatch", **completed, "evidence": evidence.to_record()}
+
+    def fail_dispatch(self, args: dict[str, Any]) -> dict[str, Any]:
+        adapter = self._outbox_adapter_for(args)
+        dispatch_id = str(args["dispatch_id"])
+        dispatch = adapter.get_dispatch(dispatch_id)
+        if dispatch is None:
+            return {"ok": False, "error": "dispatch_not_found", "dispatch_id": dispatch_id}
+        if dispatch["status"] in {"completed", "failed"}:
+            return {"ok": False, "error": "dispatch_terminal", **dispatch}
+        reason = str(args.get("reason") or "Dispatch failed")
+        adapter.append_event("dispatch.failed", dispatch_id, reason=reason)
+        store = self._store_for(args)
+        run_id = str(dispatch["run_id"])
+        task_id = str(dispatch["task_id"])
+        self._set_task_status(store, run_id, task_id, TaskStatus.BLOCKED)
+        store.set_run_status(run_id, RunStatus.BLOCKED)
+        store.append_audit(
+            run_id,
+            actor="sisyphus_lifecycle_worker",
+            action="task.failed",
+            summary=reason,
+            payload={"dispatch_id": dispatch_id, "task_id": task_id, "executor_invoked": False},
+        )
+        failed = adapter.get_dispatch(dispatch_id)
+        return {"ok": True, "command": "fail-dispatch", **failed}
+
+    def _require_claimed_dispatch(
+        self, adapter: OutboxExecutorAdapter, dispatch_id: str
+    ) -> dict[str, Any]:
+        dispatch = adapter.get_dispatch(dispatch_id)
+        if dispatch is None:
+            return {"ok": False, "error": "dispatch_not_found", "dispatch_id": dispatch_id}
+        if dispatch["status"] in {"completed", "failed"}:
+            return {"ok": False, "error": "dispatch_terminal", **dispatch}
+        if dispatch["status"] != "claimed":
+            return {"ok": False, "error": "dispatch_not_claimed", **dispatch}
+        return dispatch
+
+    def _outbox_adapter_for(self, args: dict[str, Any]) -> OutboxExecutorAdapter:
+        if args.get("outbox_path"):
+            return OutboxExecutorAdapter(args["outbox_path"])
+        workspace = args.get("workspace") or Path.cwd()
+        return OutboxExecutorAdapter(OutboxExecutorAdapter.default_path(workspace))
+
+    def _set_task_status(
+        self, store: SQLiteStateStore, run_id: str, task_id: str, status: TaskStatus
+    ) -> None:
+        task = next((candidate for candidate in store.list_tasks(run_id) if candidate.id == task_id), None)
+        if task is None:
+            raise KeyError(f"task not found: {task_id}")
+        store.save_task(replace(task, status=status, updated_at=utc_now()))
 
     def _build_worker_payload_result(self, args: dict[str, Any]) -> dict[str, Any]:
         store = self._store_for(args)

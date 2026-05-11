@@ -41,6 +41,10 @@ def test_register_adds_full_command_surface_with_metadata_and_structured_result(
         "sisyphus.enqueue-event",
         "sisyphus.worker-payload",
         "sisyphus.dispatch-task",
+        "sisyphus.list-dispatches",
+        "sisyphus.claim-dispatch",
+        "sisyphus.complete-dispatch",
+        "sisyphus.fail-dispatch",
     }
     assert result["ok"] is True
     assert result["plugin"] == "sisyphus-hermes"

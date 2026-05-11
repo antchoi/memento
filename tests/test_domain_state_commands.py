@@ -88,6 +88,10 @@ def test_command_surface_has_all_required_handlers(tmp_path: Path) -> None:
         "enqueue-event",
         "worker-payload",
         "dispatch-task",
+        "list-dispatches",
+        "claim-dispatch",
+        "complete-dispatch",
+        "fail-dispatch",
     }
     assert set(command_names()) == expected
 

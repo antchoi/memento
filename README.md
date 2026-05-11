@@ -40,8 +40,10 @@ sisyphus-hermes status --workspace /tmp/sisyphus-hermes-sample --json
 ```
 
 `sample-smoke` is the mechanical local install/load contract: it initializes a
-sample workspace, runs `doctor`, creates a sample run, and proves `status` can
-rebuild from the project-local SQLite source of truth.
+sample workspace, runs `doctor`, creates a sample run, enqueues/dispatches/
+claims/completes a sample outbox task without spawning an executor process, and
+proves `status`/`report` can rebuild from the project-local SQLite source of
+truth.
 ## Acceptance criteria traceability
 
 - AC01_repo_bootstrap: `tests/test_bootstrap.py` verifies required files and
@@ -51,8 +53,9 @@ rebuild from the project-local SQLite source of truth.
   registration against a fake Hermes context.
 - AC03_command_surface: `src/sisyphus_hermes/commands.py` exposes `init`,
   `start`, `plan`, `approve-plan`, `status`, `pause`, `resume`, `cancel`,
-  `review`, `report`, `doctor`, `sample-smoke`, `enqueue-event`, and
-  `worker-payload`, and `dispatch-task` handlers with structured results.
+  `review`, `report`, `doctor`, `sample-smoke`, `enqueue-event`,
+  `worker-payload`, `dispatch-task`, `list-dispatches`, `claim-dispatch`,
+  `complete-dispatch`, and `fail-dispatch` handlers with structured results.
 - AC04_draft_to_canonical_plan: `approve-plan` promotes draft plans to
   canonical and blocks normal execution until a canonical plan exists unless a
   bounded spike is explicitly allowed.
@@ -68,9 +71,10 @@ rebuild from the project-local SQLite source of truth.
 - AC09_worker_context / optional executor extension: `workers.py` builds
   explicit scoped payloads with repo path, task description, acceptance
   criteria, safety constraints, and reporting contract; `executors/` exposes a
-  no-op adapter plus a durable JSONL outbox adapter for explicit peer handoff.
-  No payload relies on hidden chat/TUI context, and outbox dispatch records
-  `executor_invoked=false` until a separate peer consumes it.
+  no-op adapter plus a durable append-only JSONL outbox adapter for explicit
+  peer handoff. No payload relies on hidden chat/TUI context, outbox dispatch
+  records `executor_invoked=false` until a separate peer consumes them, and
+  claim/complete/fail lifecycle commands materialize task/evidence/audit state.
 - AC10_review_gates / AC11_reporting: review gate persistence and
   Telegram-friendly status/report rendering are covered by tests.
 - AC12_cancellation_pause: pause/cancel transitions record audit events and

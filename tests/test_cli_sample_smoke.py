@@ -28,6 +28,12 @@ def test_cli_exposes_sample_smoke_command_for_local_install_contract(capsys, tmp
     assert payload["status"]["ok"] is True
     assert payload["status"]["state"]["backend"] == "sqlite"
     assert payload["status"]["run"]["workspace"] == str(tmp_path)
+    assert payload["status"]["tasks"][0]["status"] == "completed"
+    assert payload["dispatch"]["executor_invoked"] is False
+    assert payload["claim"]["status"] == "claimed"
+    assert payload["complete"]["status"] == "completed"
+    assert payload["dispatches"]["dispatches"][0]["status"] == "completed"
+    assert payload["report"]["ok"] is True
     assert payload["sample_project"]["workspace"] == str(tmp_path)
     assert payload["sample_project"]["goal"]
 

@@ -14,8 +14,9 @@ sisyphus-hermes status --workspace /tmp/sisyphus-hermes-sample --json
 ```
 
 `sample-smoke` is the recommended post-install smoke check. It initializes the
-sample workspace, runs `doctor`, creates a sample run, and immediately checks
-`status` against the durable SQLite state.
+sample workspace, runs `doctor`, creates a sample run, enqueues a sample task,
+queues/claims/completes an outbox dispatch without spawning an executor process,
+and checks `status`/`report` against durable SQLite state.
 The plugin can also be exercised without installation by using the source path:
 
 ```bash
@@ -46,6 +47,10 @@ sisyphus-hermes approve-plan --run-id run_... --plan-id plan_...
 sisyphus-hermes status --run-id run_...
 sisyphus-hermes worker-payload --run-id run_... --task-id task_... --json
 sisyphus-hermes dispatch-task --run-id run_... --task-id task_... --executor hermes-profile --json
+sisyphus-hermes list-dispatches --run-id run_... --json
+sisyphus-hermes claim-dispatch --dispatch-id dispatch_... --executor hermes-profile --json
+sisyphus-hermes complete-dispatch --dispatch-id dispatch_... --summary "done" --evidence-uri file://artifact --json
+sisyphus-hermes fail-dispatch --dispatch-id dispatch_... --reason "tests failed" --json
 sisyphus-hermes report --run-id run_...
 sisyphus-hermes pause --run-id run_... --reason "waiting for review"
 sisyphus-hermes resume --run-id run_...
@@ -100,5 +105,9 @@ worker payload cannot be mistaken for executed implementation work. The
 `OutboxExecutorAdapter` is the first practical handoff adapter: `dispatch-task`
 writes an auditable JSONL record to `.sisyphus/executor-outbox.jsonl`, returns
 `dispatched=true`, and still returns `executor_invoked=false` because no child
-process is spawned by core lifecycle code. The core plugin must continue to pass
-tests without those tools installed.
+process is spawned by core lifecycle code. External peers consume that outbox and
+report lifecycle progress through `claim-dispatch`, `complete-dispatch`, or
+`fail-dispatch`. The outbox is append-only: queued/claimed/completed/failed
+events are materialized by `list-dispatches`, completed or failed dispatches are
+terminal, and retrying failed work requires a new `dispatch-task` record. The
+core plugin must continue to pass tests without those tools installed.

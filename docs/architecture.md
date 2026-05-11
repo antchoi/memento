@@ -22,6 +22,10 @@
   - `enqueue-event`
   - `worker-payload`
   - `dispatch-task`
+  - `list-dispatches`
+  - `claim-dispatch`
+  - `complete-dispatch`
+  - `fail-dispatch`
 - Internal `TypeError` raised by the registrar is intentionally not swallowed; registration failures must be visible.
 
 ## Seed runtime closure
@@ -119,7 +123,10 @@ The MVP ships `NoopExecutorAdapter`, which returns `dispatched=False` and
 `executor_invoked=False` even when the requested peer is named `opencode`,
 `codex`, or `claude-code`. It also ships `OutboxExecutorAdapter`, which writes a
 JSONL dispatch record to `.sisyphus/executor-outbox.jsonl` and returns
-`dispatched=True` while still recording `executor_invoked=False`. That makes
+`dispatched=True` while still recording `executor_invoked=False`. The outbox is
+append-only: `list-dispatches` materializes queued/claimed/completed/failed
+state, external peers report progress via `claim-dispatch`, `complete-dispatch`,
+and `fail-dispatch`, and completed/failed dispatches are terminal. That makes
 handoff explicit and auditable without spawning child processes or supervising
 external logs.
 
