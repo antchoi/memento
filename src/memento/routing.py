@@ -70,6 +70,24 @@ DEFAULT_EXECUTORS: dict[str, ExecutorCapability] = {
         command=("opencode",),
         experimental=True,
     ),
+    "goose": ExecutorCapability(
+        name="goose",
+        headless=True,
+        auto_dispatch_allowed=False,
+        preferred_task_kinds=("investigation", "general_agent_task", "implementation"),
+        limitations=("Experimental OpenCode-like worker; requires healthcheck before real invoke.",),
+        command=("goose",),
+        experimental=True,
+    ),
+    "swe-agent": ExecutorCapability(
+        name="swe-agent",
+        headless=True,
+        auto_dispatch_allowed=False,
+        preferred_task_kinds=("issue_repair", "test_driven_fix"),
+        limitations=("Requires sandbox availability for safe issue repair.",),
+        command=("swe-agent",),
+        experimental=True,
+    ),
 }
 
 
@@ -79,6 +97,7 @@ def route_task(
     graph_state: str = "missing",
     memory_summary: str = "",
     requested_executor: str | None = None,
+    sandbox_available: bool = False,
 ) -> dict[str, Any]:
     rejected: dict[str, dict[str, str]] = {}
     candidates: list[tuple[int, str]] = []
@@ -86,6 +105,9 @@ def route_task(
         record = capability.to_record()
         if name == "opencode":
             rejected[name] = {"reason": "manual_or_experimental_only"}
+            continue
+        if name == "swe-agent" and task.verification_policy.get("requires_sandbox") and not sandbox_available:
+            rejected[name] = {"reason": "sandbox_required_unavailable"}
             continue
         score = 10
         if task.kind in capability.preferred_task_kinds:

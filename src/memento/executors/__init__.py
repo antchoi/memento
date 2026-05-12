@@ -245,6 +245,10 @@ class PeerExecutorAdapter:
                 command.extend(files)
             command.extend(["--message", prompt])
             return command
+        if executor == "goose":
+            return ["goose", "run", prompt]
+        if executor == "swe-agent":
+            return ["swe-agent", "run", "--problem_statement", prompt]
         if executor in {"claude", "claude-code"}:
             return ["claude", "-p", prompt]
         raise ValueError(f"unsupported executor peer: {request.executor}")
