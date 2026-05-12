@@ -238,6 +238,13 @@ class PeerExecutorAdapter:
             return ["opencode", "run", prompt]
         if executor == "codex":
             return ["codex", "exec", prompt]
+        if executor == "aider":
+            command = ["aider"]
+            files = list(payload.relevant_files)
+            if files:
+                command.extend(files)
+            command.extend(["--message", prompt])
+            return command
         if executor in {"claude", "claude-code"}:
             return ["claude", "-p", prompt]
         raise ValueError(f"unsupported executor peer: {request.executor}")

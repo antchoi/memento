@@ -73,7 +73,13 @@ DEFAULT_EXECUTORS: dict[str, ExecutorCapability] = {
 }
 
 
-def route_task(task: SisyphusTask, *, graph_state: str = "missing", memory_summary: str = "") -> dict[str, Any]:
+def route_task(
+    task: SisyphusTask,
+    *,
+    graph_state: str = "missing",
+    memory_summary: str = "",
+    requested_executor: str | None = None,
+) -> dict[str, Any]:
     rejected: dict[str, dict[str, str]] = {}
     candidates: list[tuple[int, str]] = []
     for name, capability in DEFAULT_EXECUTORS.items():
@@ -95,7 +101,22 @@ def route_task(task: SisyphusTask, *, graph_state: str = "missing", memory_summa
         candidates.append((score, name))
     candidates.sort(reverse=True)
     selected = candidates[0][1] if candidates else "hermes-direct"
+    user_override = None
+    if requested_executor:
+        allowed = requested_executor in DEFAULT_EXECUTORS and requested_executor not in rejected
+        if requested_executor == "opencode":
+            allowed = False
+        if task.risk == "high" and requested_executor not in {"hermes-direct"}:
+            allowed = False
+        user_override = {
+            "requested_executor": requested_executor,
+            "honored": allowed,
+            "reason": "honored" if allowed else "blocked_by_hard_safety_or_capability_filter",
+        }
+        if allowed:
+            selected = requested_executor
     decision = {
+        "status": "proposed",
         "selected_executor": selected,
         "auto_dispatch": False,
         "requires_user_approval": task.risk == "high",
@@ -113,6 +134,8 @@ def route_task(task: SisyphusTask, *, graph_state: str = "missing", memory_summa
         "context_profile": "code_snapshot" if task.context_refs else "compact",
         "executor_invoked": False,
     }
+    if user_override:
+        decision["user_override"] = user_override
     return decision
 
 

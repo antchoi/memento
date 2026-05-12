@@ -32,6 +32,8 @@ class WorkerPayload:
     task_description: str
     acceptance_criteria: tuple[str, ...]
     role: str
+    relevant_files: tuple[str, ...] = ()
+    verification_policy: dict[str, Any] = field(default_factory=dict)
     safety_constraints: str = field(default_factory=render_worker_safety_constraints)
     reporting_contract: str = REPORTING_CONTRACT
     hidden_context_policy: str = "Do not rely on parent chat history or TUI state."
@@ -55,4 +57,6 @@ def build_worker_payload(run: SisyphusRun, task: SisyphusTask) -> WorkerPayload:
         task_description=task.description,
         acceptance_criteria=task.acceptance_criteria,
         role=task.role,
+        relevant_files=task.context_refs,
+        verification_policy=task.verification_policy,
     )

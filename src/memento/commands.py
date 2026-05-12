@@ -30,6 +30,7 @@ from .routing import registry_snapshot, route_task
 from .state import SQLiteStateStore
 from .verification import evaluate_task
 from .workers import build_worker_payload
+from .worktree import create_isolated_worktree
 
 REQUIRED_COMMANDS = (
     "init",
@@ -571,6 +572,12 @@ class CommandService:
         workspace = Path(payload.repo_path)
         executor = str(args.get("executor") or "hermes-profile")
         adapter = OutboxExecutorAdapter(args.get("outbox_path") or OutboxExecutorAdapter.default_path(workspace))
+        worktree = None
+        if args.get("isolated_worktree"):
+            task = store.get_task(payload.task_id)
+            if task is None:
+                return {"ok": False, "error": "task_not_found", "command": "dispatch-task"}
+            worktree = create_isolated_worktree(workspace, task, dry_run=not bool(args.get("create_worktree")))
         dispatch = adapter.dispatch(
             ExecutorDispatchRequest(
                 payload=payload,
@@ -589,8 +596,11 @@ class CommandService:
                 "outbox_path": dispatch["outbox_path"],
                 "dispatch_id": dispatch["dispatch_id"],
                 "executor_invoked": False,
+                "worktree": worktree,
             },
         )
+        if worktree is not None:
+            dispatch = {**dispatch, "worktree": worktree}
         return {"command": "dispatch-task", **dispatch}
 
     def list_dispatches(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -660,6 +670,15 @@ class CommandService:
             payload={"dispatch_id": dispatch_id, "evidence_id": evidence.id},
         )
         self._set_task_status(store, run_id, task_id, TaskStatus.COMPLETED)
+        graph_update = None
+        if args.get("graphify_checkpoint"):
+            graph_update = update_graph(
+                store=store,
+                run_id=run_id,
+                workspace=args.get("workspace") or Path.cwd(),
+                changed_files=list(args.get("changed_files") or []),
+                mock=bool(args.get("mock_graphify")),
+            )
         store.append_audit(
             run_id,
             actor="sisyphus_lifecycle_worker",
@@ -668,7 +687,10 @@ class CommandService:
             payload={"dispatch_id": dispatch_id, "task_id": task_id, "executor_invoked": False},
         )
         completed = adapter.get_dispatch(dispatch_id)
-        return {"ok": True, "command": "complete-dispatch", **completed, "evidence": evidence.to_record()}
+        result = {"ok": True, "command": "complete-dispatch", **completed, "evidence": evidence.to_record()}
+        if graph_update is not None:
+            result["graph_update"] = graph_update
+        return result
 
     def fail_dispatch(self, args: dict[str, Any]) -> dict[str, Any]:
         adapter = self._outbox_adapter_for(args)
@@ -808,7 +830,11 @@ class CommandService:
         task = store.get_task(str(args["task_id"]))
         if task is None:
             return {"ok": False, "error": "task_not_found", "command": "route-task"}
-        decision = route_task(task, graph_state=graph_status(args.get("workspace") or Path.cwd())["state"])
+        decision = route_task(
+            task,
+            graph_state=graph_status(args.get("workspace") or Path.cwd())["state"],
+            requested_executor=args.get("executor"),
+        )
         evidence = store.save_evidence(
             Evidence(
                 run_id=task.run_id,
