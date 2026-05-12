@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from memento.commands import CommandService
-from memento.domain import SisyphusTask, TaskStatus
+from memento.domain import MementoTask, TaskStatus
 from memento.executors import (
     ExecutorDispatchRequest,
     OutboxExecutorAdapter,
@@ -16,12 +16,12 @@ from memento.workers import build_worker_payload
 
 
 def test_json_kanban_adapter_persists_cards_across_store_restarts(tmp_path: Path) -> None:
-    board_path = tmp_path / ".sisyphus" / "kanban.json"
+    board_path = tmp_path / ".memento" / "kanban.json"
     kanban = JsonKanbanAdapter(board_path)
-    store = SQLiteStateStore(tmp_path / ".sisyphus" / "state.sqlite3", kanban=kanban)
+    store = SQLiteStateStore(tmp_path / ".memento" / "state.sqlite3", kanban=kanban)
     run = store.create_run(goal="ship practical adapters", workspace=str(tmp_path))
     task = store.save_task(
-        SisyphusTask(
+        MementoTask(
             run_id=run.id,
             title="Build Kanban adapter",
             description="Persist task as a board card",
@@ -30,7 +30,7 @@ def test_json_kanban_adapter_persists_cards_across_store_restarts(tmp_path: Path
     )
 
     reopened = SQLiteStateStore(
-        tmp_path / ".sisyphus" / "state.sqlite3", kanban=JsonKanbanAdapter(board_path)
+        tmp_path / ".memento" / "state.sqlite3", kanban=JsonKanbanAdapter(board_path)
     )
 
     assert reopened.source_of_truth == "kanban"
@@ -44,9 +44,9 @@ def test_json_kanban_adapter_persists_cards_across_store_restarts(tmp_path: Path
 def test_json_kanban_adapter_updates_existing_card_instead_of_duplicating(tmp_path: Path) -> None:
     board_path = tmp_path / "kanban.json"
     adapter = JsonKanbanAdapter(board_path)
-    first = SisyphusTask(run_id="run_1", title="Task", description="one")
+    first = MementoTask(run_id="run_1", title="Task", description="one")
     adapter.create_or_update_task(first)
-    updated = SisyphusTask(
+    updated = MementoTask(
         run_id="run_1",
         title="Task updated",
         description="two",
@@ -61,7 +61,7 @@ def test_json_kanban_adapter_updates_existing_card_instead_of_duplicating(tmp_pa
 
 def test_hermes_kanban_cli_adapter_uses_public_json_cli_contract(tmp_path: Path) -> None:
     calls: list[list[str]] = []
-    task = SisyphusTask(
+    task = MementoTask(
         run_id="run_123",
         title="Implement live adapter",
         description=str(tmp_path),
@@ -76,21 +76,21 @@ def test_hermes_kanban_cli_adapter_uses_public_json_cli_contract(tmp_path: Path)
         return {
             "exit_code": 0,
             "stdout": json.dumps(
-                {"tasks": [{"id": "kb_1", "body": json.dumps({"sisyphus_task": task.to_record()})}]}
+                {"tasks": [{"id": "kb_1", "body": json.dumps({"memento_task": task.to_record()})}]}
             ),
         }
 
-    adapter = HermesKanbanCliAdapter(board="sisyphus", tenant="memento", runner=runner)
+    adapter = HermesKanbanCliAdapter(board="memento", tenant="memento", runner=runner)
 
     saved = adapter.create_or_update_task(task)
     listed = adapter.list_tasks("run_123")
 
     assert saved.id == task.id
     assert listed == [task]
-    assert calls[0][:4] == ["hermes", "kanban", "--board", "sisyphus"]
+    assert calls[0][:4] == ["hermes", "kanban", "--board", "memento"]
     assert "--idempotency-key" in calls[0]
     assert f"memento:{task.id}" in calls[0]
-    assert calls[1] == ["hermes", "kanban", "--board", "sisyphus", "list", "--tenant", "memento", "--json"]
+    assert calls[1] == ["hermes", "kanban", "--board", "memento", "list", "--tenant", "memento", "--json"]
 
 
 def test_hermes_kanban_cli_adapter_reports_subprocess_failures() -> None:
@@ -127,9 +127,9 @@ def test_hermes_kanban_subprocess_runner_converts_oserror_to_failure() -> None:
 def test_outbox_executor_adapter_records_explicit_dispatch_without_spawning_process(tmp_path: Path) -> None:
     store = SQLiteStateStore(tmp_path / "state.db")
     run = store.create_run(goal="ship executor adapter", workspace=str(tmp_path))
-    task = store.save_task(SisyphusTask(run_id=run.id, title="Implement", description="Do work"))
+    task = store.save_task(MementoTask(run_id=run.id, title="Implement", description="Do work"))
     payload = build_worker_payload(run, task)
-    outbox_path = tmp_path / ".sisyphus" / "executor-outbox.jsonl"
+    outbox_path = tmp_path / ".memento" / "executor-outbox.jsonl"
 
     result = OutboxExecutorAdapter(outbox_path).dispatch(
         ExecutorDispatchRequest(payload=payload, executor="hermes-profile", reason="manual dispatch")
@@ -150,7 +150,7 @@ def test_outbox_executor_adapter_records_explicit_dispatch_without_spawning_proc
 def test_peer_executor_adapter_builds_commands_and_requires_explicit_invoke(tmp_path: Path) -> None:
     store = SQLiteStateStore(tmp_path / "state.db")
     run = store.create_run(goal="ship peer executor", workspace=str(tmp_path))
-    task = store.save_task(SisyphusTask(run_id=run.id, title="Implement", description="Do work"))
+    task = store.save_task(MementoTask(run_id=run.id, title="Implement", description="Do work"))
     payload = build_worker_payload(run, task)
     invoked: list[tuple[list[str], Path]] = []
 
@@ -173,7 +173,7 @@ def test_peer_executor_adapter_builds_commands_and_requires_explicit_invoke(tmp_
 def test_peer_executor_adapter_returns_structured_failure_on_spawn_error(tmp_path: Path) -> None:
     store = SQLiteStateStore(tmp_path / "state.db")
     run = store.create_run(goal="ship peer executor failure handling", workspace=str(tmp_path))
-    task = store.save_task(SisyphusTask(run_id=run.id, title="Implement", description="Do work"))
+    task = store.save_task(MementoTask(run_id=run.id, title="Implement", description="Do work"))
     payload = build_worker_payload(run, task)
 
     def runner(_cmd: list[str], _cwd: Path) -> dict[str, object]:
@@ -216,4 +216,4 @@ def test_command_dispatch_task_rejects_unknown_task_without_outbox_write(tmp_pat
     result = service.dispatch_task({"run_id": run["id"], "task_id": "missing"})
 
     assert result == {"ok": False, "error": "task_not_found", "task_id": "missing"}
-    assert not (tmp_path / ".sisyphus" / "executor-outbox.jsonl").exists()
+    assert not (tmp_path / ".memento" / "executor-outbox.jsonl").exists()

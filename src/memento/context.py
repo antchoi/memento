@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .domain import SisyphusRun, SisyphusTask, utc_now
+from .domain import MementoRun, MementoTask, utc_now
 from .state import SQLiteStateStore
 
 
@@ -16,7 +16,7 @@ def _stable_json(payload: dict[str, Any]) -> str:
 
 
 def bundle_dir(workspace: str | Path) -> Path:
-    path = Path(workspace) / ".sisyphus" / "bundles"
+    path = Path(workspace) / ".memento" / "bundles"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -24,8 +24,8 @@ def bundle_dir(workspace: str | Path) -> Path:
 def build_context_bundle(
     *,
     store: SQLiteStateStore,
-    run: SisyphusRun,
-    task: SisyphusTask,
+    run: MementoRun,
+    task: MementoTask,
     memory_summary: str | None = None,
     graph_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:

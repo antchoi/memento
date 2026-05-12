@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "memento"
 version = "0.1.0"
-description = "Hermes-native Sisyphus durable task lifecycle plugin."
+description = "Hermes-native Memento durable task lifecycle plugin."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

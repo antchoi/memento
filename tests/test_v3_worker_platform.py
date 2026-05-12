@@ -5,7 +5,7 @@ from pathlib import Path
 from memento.approvals import record_approval, release_gate_satisfied
 from memento.ci import record_external_check
 from memento.competition import select_patch
-from memento.domain import SisyphusTask, TaskStatus
+from memento.domain import MementoTask, TaskStatus
 from memento.graph_diff import detect_graph_regressions
 from memento.recovery import recover_dispatch_jobs
 from memento.state import SQLiteStateStore
@@ -115,7 +115,7 @@ def test_recover_long_running_jobs_from_canonical_state(tmp_path: Path) -> None:
     store = SQLiteStateStore(SQLiteStateStore.default_path(tmp_path))
     run = store.create_run(goal="recover", workspace=str(tmp_path))
     task = store.save_task(
-        SisyphusTask(
+        MementoTask(
             run_id=run.id,
             title="Long job",
             description="Resume from bundle",

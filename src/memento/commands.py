@@ -16,8 +16,8 @@ from .domain import (
     GateStatus,
     ReviewGate,
     RunStatus,
-    SisyphusPlan,
-    SisyphusRun,
+    MementoPlan,
+    MementoRun,
     TaskStatus,
     utc_now,
 )
@@ -157,21 +157,21 @@ def _plugin_registration_smoke() -> dict[str, Any]:
 
 
 def _workspace_writable_check(workspace: Path) -> dict[str, Any]:
-    sisyphus_dir = workspace / ".sisyphus"
-    probe = sisyphus_dir / ".doctor-write-probe"
+    memento_dir = workspace / ".memento"
+    probe = memento_dir / ".doctor-write-probe"
     try:
-        sisyphus_dir.mkdir(parents=True, exist_ok=True)
+        memento_dir.mkdir(parents=True, exist_ok=True)
         probe.write_text("ok", encoding="utf-8")
         probe.unlink(missing_ok=True)
     except Exception as exc:  # pragma: no cover - defensive diagnostic path
         return {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
-    return {"status": "ok", "path": str(sisyphus_dir)}
+    return {"status": "ok", "path": str(memento_dir)}
 
 
 def _runtime_gitignored_check() -> dict[str, Any]:
     gitignore_path = _project_root() / ".gitignore"
     text = gitignore_path.read_text(encoding="utf-8") if gitignore_path.exists() else ""
-    required = (".sisyphus/", ".hermes/runtime/", ".ouroboros/data/", ".ouroboros/runs/")
+    required = (".memento/", ".hermes/runtime/", ".ouroboros/data/", ".ouroboros/runs/")
     missing = [pattern for pattern in required if pattern not in text]
     return {"status": "ok" if not missing else "blocked", "missing": missing}
 
@@ -282,7 +282,7 @@ class CommandService:
             "runtime_paths": {
                 "state": str(db_path),
                 "executor_outbox": str(outbox_path),
-                "workspace_state_dir": str(workspace / ".sisyphus"),
+                "workspace_state_dir": str(workspace / ".memento"),
             },
             "graphify": graphify_status,
             "executor_registry": executor_registry,
@@ -405,7 +405,7 @@ class CommandService:
             if gate_result is not None:
                 return gate_result
             run = store.set_run_status(run.id, RunStatus.ACTIVE)
-            store.append_audit(run.id, actor="sisyphus_lifecycle_worker", action="run.started")
+            store.append_audit(run.id, actor="memento_lifecycle_worker", action="run.started")
             return {"ok": True, "command": "start", "run": run.to_record()}
 
         goal = str(args.get("goal") or "").strip()
@@ -417,7 +417,7 @@ class CommandService:
         if args.get("allow_spike"):
             store.append_audit(
                 run.id,
-                actor="sisyphus_lifecycle_worker",
+                actor="memento_lifecycle_worker",
                 action="execution.spike_allowed",
                 summary="Bounded spike allowed without canonical plan.",
             )
@@ -427,7 +427,7 @@ class CommandService:
         store = self._store_for(args)
         run_id = str(args["run_id"])
         plan = store.save_plan(
-            SisyphusPlan(
+            MementoPlan(
                 run_id=run_id,
                 title=str(args.get("title") or "Draft plan"),
                 body=str(args.get("body") or ""),
@@ -497,7 +497,7 @@ class CommandService:
             payload["child_process_handles"] = list(args["child_process_handles"])
         store.append_audit(
             run_id,
-            actor="sisyphus_lifecycle_worker",
+            actor="memento_lifecycle_worker",
             action=action,
             summary=str(args.get("reason") or ""),
             payload=payload,
@@ -587,7 +587,7 @@ class CommandService:
         )
         store.append_audit(
             payload.run_id,
-            actor="sisyphus_lifecycle_worker",
+            actor="memento_lifecycle_worker",
             action="task.dispatch_queued",
             summary=f"Queued task for {executor}",
             payload={
@@ -681,7 +681,7 @@ class CommandService:
             )
         store.append_audit(
             run_id,
-            actor="sisyphus_lifecycle_worker",
+            actor="memento_lifecycle_worker",
             action="task.completed",
             summary=summary,
             payload={"dispatch_id": dispatch_id, "task_id": task_id, "executor_invoked": False},
@@ -709,7 +709,7 @@ class CommandService:
         store.set_run_status(run_id, RunStatus.BLOCKED)
         store.append_audit(
             run_id,
-            actor="sisyphus_lifecycle_worker",
+            actor="memento_lifecycle_worker",
             action="task.failed",
             summary=reason,
             payload={"dispatch_id": dispatch_id, "task_id": task_id, "executor_invoked": False},
@@ -732,7 +732,7 @@ class CommandService:
     def _execution_gate_result(
         self,
         store: SQLiteStateStore,
-        run: SisyphusRun,
+        run: MementoRun,
         *,
         command: str,
         allow_spike: bool = False,
@@ -740,7 +740,7 @@ class CommandService:
         if not allow_spike and store.canonical_plan(run.id) is None:
             store.append_audit(
                 run.id,
-                actor="sisyphus_lifecycle_worker",
+                actor="memento_lifecycle_worker",
                 action="execution.blocked",
                 summary="Canonical plan required before execution.",
             )
@@ -750,7 +750,7 @@ class CommandService:
             blocked_run = store.set_run_status(run.id, RunStatus.BLOCKED)
             store.append_audit(
                 run.id,
-                actor="sisyphus_lifecycle_worker",
+                actor="memento_lifecycle_worker",
                 action="execution.blocked",
                 summary="Failed review gate blocks execution.",
                 payload={"blocking_gate_ids": [gate["id"] for gate in blocking_gates]},

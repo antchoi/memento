@@ -1,146 +1,154 @@
-# memento User Guide
+# Memento User Guide
 
-## Install for local development
+This compact guide shows the normal end-to-end Memento workflow. For focused references, see:
+
+- [`getting-started.md`](getting-started.md)
+- [`concepts.md`](concepts.md)
+- [`commands.md`](commands.md)
+- [`operators-guide.md`](operators-guide.md)
+- [`architecture.md`](architecture.md)
+
+## 1. Install and check readiness
 
 ```bash
 python -m pip install -e .
-python -m pip install -e '.[dev]'  # optional: test/lint tools
-python -m pytest -q
-python -m ruff check .
-python -m compileall -q src tests
+python -m pip install -e '.[dev]'
 memento doctor --json
-memento sample-smoke --workspace /tmp/memento-sample --json
-memento status --workspace /tmp/memento-sample --json
 ```
 
-`sample-smoke` is the recommended post-install smoke check. It initializes the
-sample workspace, runs `doctor`, creates a sample run, enqueues a sample task,
-queues/claims/completes an outbox dispatch without spawning an executor process,
-and checks `status`/`report` against durable SQLite state.
-The plugin can also be exercised without installation by using the source path:
+For source-only usage:
 
 ```bash
 PYTHONPATH=src python -m memento.cli doctor --json
-PYTHONPATH=src python -m memento.cli sample-smoke --workspace /tmp/memento-sample --json
 ```
 
-For the full local release-candidate check, run:
+## 2. Smoke-test the local lifecycle
 
 ```bash
-scripts/verify-local.sh
+memento sample-smoke --workspace /tmp/memento-sample --json
+memento status --workspace /tmp/memento-sample --json
+memento report --workspace /tmp/memento-sample
+```
+
+`sample-smoke` is the recommended post-install contract. It initializes a sample workspace, creates a run, enqueues a task, queues/claims/completes an outbox dispatch without spawning an executor process, and verifies status/report recovery from durable state.
+
+## 3. Initialize a project workspace
+
+```bash
+memento init --workspace /path/to/repo --json
+memento start --workspace /path/to/repo --goal "Ship the next verified slice" --allow-spike --json
+```
+
+Capture the returned `run.id`.
+
+## 4. Create the canonical plan
+
+```bash
+memento plan \
+  --workspace /path/to/repo \
+  --run-id run_... \
+  --title "Implementation plan" \
+  --body "Write tests, implement the slice, verify, and record evidence." \
+  --json
+
+memento approve-plan \
+  --workspace /path/to/repo \
+  --run-id run_... \
+  --plan-id plan_... \
+  --json
+```
+
+Normal execution is blocked until a canonical plan exists unless the run was explicitly started as a bounded spike.
+
+## 5. Enqueue and dispatch work
+
+```bash
+memento enqueue-event \
+  --workspace /path/to/repo \
+  --run-id run_... \
+  --title "Implement task" \
+  --body "Task details and acceptance criteria" \
+  --json
+
+memento worker-payload --workspace /path/to/repo --run-id run_... --task-id task_... --json
+memento dispatch-task --workspace /path/to/repo --run-id run_... --task-id task_... --executor hermes-profile --json
+```
+
+A dispatch is an auditable handoff, not proof that work is complete.
+
+## 6. Record completion and evidence
+
+```bash
+memento claim-dispatch --workspace /path/to/repo --dispatch-id dispatch_... --executor hermes-profile --json
+memento complete-dispatch \
+  --workspace /path/to/repo \
+  --dispatch-id dispatch_... \
+  --summary "Implemented and verified" \
+  --evidence-uri file://verification/task.log \
+  --json
+```
+
+Evidence should be independently checkable: test output, CI links, lint logs, generated artifacts, review decisions, or approval records.
+
+## 7. Report and recover
+
+```bash
+memento status --workspace /path/to/repo --run-id run_... --json
+memento report --workspace /path/to/repo --run-id run_...
+memento list-dispatches --workspace /path/to/repo --run-id run_... --json
+```
+
+Reports are reconstructed from durable state and formatted for chat. If an executor session disappears, regenerate the context bundle instead of relying on the lost session:
+
+```bash
+memento context-bundle --workspace /path/to/repo --run-id run_... --task-id task_... --json
 ```
 
 ## Hermes plugin registration
 
-The local Hermes plugin entry point is `memento.plugin:register`. After
-editable installation, configure Hermes to load that module and call
-`register(ctx)`. The context is expected to expose
-`register_command(name, handler, **metadata)`. Registration creates the
-`memento.*` command namespace and returns structured metadata listing the
-registered commands.
+The plugin entry point is `memento.plugin:register`. A Hermes-like context needs a `register_command(name, handler, **metadata)` method. Registration creates the `memento.*` command namespace and returns structured metadata.
 
-Smoke/debug sequence:
+Debug sequence:
 
 ```bash
 memento doctor --json
 memento sample-smoke --workspace /tmp/memento-sample --json
 ```
 
-`doctor` checks package import readiness, the `memento` console script
-metadata, `plugin.register(ctx)` against a fake Hermes context, bundled skill
-frontmatter, workspace `.sisyphus/` writability, generated runtime state
-`.gitignore` coverage, local SQLite readiness, and OpenCode/oh-my-openagent
-import independence. Runtime artifacts are project-local:
+## Runtime state
 
-- `.sisyphus/state.sqlite3` — SQLite lifecycle source of truth when Kanban is unavailable;
-- `.sisyphus/executor-outbox.jsonl` — append-only external executor handoff log;
-- `.sisyphus/kanban.json` — dependency-free local Kanban adapter state.
+Generated state is project-local:
 
-## State model and recovery
+- SQLite lifecycle state;
+- local Kanban adapter state;
+- append-only external executor handoff log;
+- explicit worker context packages.
 
-- The intended production source of truth is Hermes Kanban.
-- For local/practical Kanban work, `JsonKanbanAdapter` stores Kanban-shaped task
-  cards in `.sisyphus/kanban.json` and preserves cards across process restarts.
-- When Kanban is unavailable, the local SQLite fallback at
-  `.sisyphus/state.sqlite3` stores runs, plans, tasks, review gates, evidence,
-  and audit events.
-- Re-running `init` is idempotent and recreates the schema if needed.
-- `status` and `report` rebuild their view from durable state, not from an
-  OpenCode/Codex/Claude TUI or process log. Their structured payloads include
-  `state.backend` and `state.path` so operators can verify which fallback store
-  is being used after a process restart.
-
-## Command examples
-
-```bash
-memento init --workspace /path/to/repo
-memento start --workspace /path/to/repo --goal "Ship the plugin MVP"
-memento plan --run-id run_... --title "MVP plan" --body "..."
-memento approve-plan --run-id run_... --plan-id plan_...
-memento status --run-id run_...
-memento worker-payload --run-id run_... --task-id task_... --json
-memento dispatch-task --run-id run_... --task-id task_... --executor hermes-profile --json
-memento list-dispatches --run-id run_... --json
-memento claim-dispatch --dispatch-id dispatch_... --executor hermes-profile --json
-memento complete-dispatch --dispatch-id dispatch_... --summary "done" --evidence-uri file://artifact --json
-memento fail-dispatch --dispatch-id dispatch_... --reason "tests failed" --json
-memento report --run-id run_...
-memento pause --run-id run_... --reason "waiting for review"
-memento resume --run-id run_...
-memento cancel --run-id run_... --reason "user cancelled"
-```
-
-Telegram/slash-command integrations should render the same structured results in
-concise Markdown without tables.
-
-## Planning and review gates
-
-Normal execution is blocked until a draft plan is promoted to canonical. Review
-gates cover:
-
-- preflight safety;
-- plan review;
-- implementation/spec review;
-- quality review;
-- final acceptance.
-
-Failed gates must produce actionable findings and block or pause advancement.
-Pause/cancel reports include incomplete tasks and any known child process handles
-provided by executor adapters so recovery can happen without reading TUI/process
-logs.
+Treat generated state as Memento runtime data. Do not use it as proof of completion without corresponding evidence records and verification output.
 
 ## Safety model
 
-Sisyphus workers receive explicit payloads containing repo path, task
-description, acceptance criteria, safety constraints, and reporting contract.
-They must not depend on hidden parent chat history. The default guardrails block
-or require explicit approval for:
+Memento workers receive explicit payloads containing workspace, goal, task, acceptance criteria, safety constraints, and reporting contract. They must not depend on hidden parent chat history.
 
-- `git reset --hard`;
-- `git clean`;
-- force push;
-- direct protected-branch push;
-- merge operations.
+Guarded operations include destructive git commands such as `git reset --hard` and `git clean`, protected-branch pushes, force pushes, merge operations, release actions, and secret/forbidden-path exposure.
 
-## Cron and event integration
+## Cron and webhook events
 
-Cron/webhook integrations may enqueue durable tasks only. They must not dispatch
-implementation work directly. A later Sisyphus worker or explicit user command
-can decide how to process the queued task after safety and review checks.
+Cron/webhook integrations may enqueue durable tasks only. They must not directly dispatch implementation work.
+
+```bash
+memento enqueue-event --workspace /path/to/repo --run-id run_... --title "Incoming event" --body "Payload summary" --json
+```
 
 ## Optional executor extension
 
-OpenCode, Codex, Claude Code, or Hermes profile workers can be implemented as
-future executor adapters under `src/memento/executors/`. They are peer
-executors, not the lifecycle source of truth. The MVP `NoopExecutorAdapter`
-intentionally returns `dispatched=false` / `executor_invoked=false` so a queued
-worker payload cannot be mistaken for executed implementation work. The
-`OutboxExecutorAdapter` is the first practical handoff adapter: `dispatch-task`
-writes an auditable JSONL record to `.sisyphus/executor-outbox.jsonl`, returns
-`dispatched=true`, and still returns `executor_invoked=false` because no child
-process is spawned by core lifecycle code. External peers consume that outbox and
-report lifecycle progress through `claim-dispatch`, `complete-dispatch`, or
-`fail-dispatch`. The outbox is append-only: queued/claimed/completed/failed
-events are materialized by `list-dispatches`, completed or failed dispatches are
-terminal, and retrying failed work requires a new `dispatch-task` record. The
-core plugin must continue to pass tests without those tools installed.
+Optional executor extension adapters can live under `src/memento/executors/`. They are peer handoff targets, not the lifecycle source of truth. Core Memento should keep passing tests without OpenCode, Codex, Claude Code, OpenHands, or other external executor packages installed.
+
+## Full verification
+
+```bash
+python -m pytest -q
+python -m ruff check .
+python -m compileall -q src tests
+scripts/verify-local.sh
+```

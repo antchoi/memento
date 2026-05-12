@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-SMOKE_WORKSPACE="${SISYPHUS_HERMES_SMOKE_WORKSPACE:-/tmp/memento-local-smoke}"
+SMOKE_WORKSPACE="${MEMENTO_SMOKE_WORKSPACE:-/tmp/memento-local-smoke}"
 rm -rf "$SMOKE_WORKSPACE"
 
 python -m pytest -q

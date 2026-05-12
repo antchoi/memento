@@ -1,12 +1,12 @@
 # memento Architecture
 
-`memento` is a Hermes-native lifecycle plugin inspired by Sisyphus/Ultraworker workflows. It deliberately avoids treating OpenCode/Codex/Claude Code process logs or TUIs as the core source of truth. Those tools can later be optional executor peers; the plugin state model remains Hermes-owned.
+`memento` is a Hermes-native lifecycle plugin for durable planning, dispatch, evidence, and reporting. It deliberately avoids treating OpenCode/Codex/Claude Code process logs or TUIs as the core source of truth. Those tools can later be optional executor peers; the plugin state model remains Memento-owned.
 
 ## Runtime boundary
 
 - `memento.plugin.register(ctx)` is runtime-light and safe to import without Hermes gateway, Kanban, or optional executor packages.
 - Local Hermes registration loads `memento.plugin:register`; a Hermes-like context only needs `register_command(name, handler, **metadata)`, and the fake-context tests are the executable registration contract.
-- `doctor` mechanically checks package import readiness, console-script metadata, `plugin.register(ctx)` smoke output, bundled skill frontmatter, workspace `.sisyphus/` writability, runtime `.gitignore` coverage, and the OpenCode/oh-my-openagent import independence scan.
+- `doctor` mechanically checks package import readiness, console-script metadata, `plugin.register(ctx)` smoke output, bundled skill frontmatter, workspace runtime-state writability, runtime `.gitignore` coverage, and the OpenCode/oh-my-openagent import independence scan.
 - The initial command surface is registered as `memento.*` commands:
   - `init`
   - `start`
@@ -35,7 +35,7 @@ The implementation keeps the Seed vocabulary explicit so runtime state can be
 recovered without relying on hidden chat history or an external TUI:
 
 - Actors: `founder_user`, `hermes_plugin_command_layer`, `metis_planner`,
-  `momus_reviewer`, `sisyphus_lifecycle_worker`, `hephaestus_executor`,
+  `momus_reviewer`, `memento_lifecycle_worker`, `hephaestus_executor`,
   `hermes_sheriff`, and future `optional_external_executor_adapter` roles appear
   in domain defaults, audit events, worker payloads, review gates, or docs.
 - Accepted inputs: workspace/repository path, user goal/task text, plan approval
@@ -59,9 +59,9 @@ recovered without relying on hidden chat history or an external TUI:
 
 The domain model is defined in `src/memento/domain.py`:
 
-- `SisyphusRun`: top-level run with goal, workspace, status, actor, source-of-truth metadata, and current canonical plan id.
-- `SisyphusPlan`: draft/canonical/superseded plan documents with assumptions, risks, and acceptance criteria.
-- `SisyphusTask`: execution unit scaffold for future worker dispatch.
+- Run: top-level lifecycle record with goal, workspace, status, actor, source-of-truth metadata, and current canonical plan id.
+- Plan: draft/canonical/superseded plan documents with assumptions, risks, and acceptance criteria.
+- Task: execution unit scaffold for worker dispatch.
 - `ReviewGate`: preflight, plan review, implementation review, quality review, and final acceptance gates.
 - `Evidence`: verification artifacts such as test output, lint output, screenshots, or links.
 - `AuditEvent`: append-only lifecycle event stream.
@@ -79,8 +79,8 @@ SQLite fallback contract in `src/memento/state.py`:
 - `KanbanAdapter` defines the minimal task persistence/listing protocol for a
   future Hermes Kanban implementation;
 - `JsonKanbanAdapter` in `src/memento/kanban.py` provides a practical
-  dependency-free board at `.sisyphus/kanban.json` for local collaboration,
-  smoke testing, and adapter contract development;
+  dependency-free local board for collaboration, smoke testing, and adapter
+  contract development;
 - `UnavailableKanbanAdapter` makes fallback behavior explicit when no live
   Kanban database is present;
 - schema initialization is idempotent;
@@ -123,8 +123,8 @@ must not rely on parent chat history or OpenCode/TUI state.
 The MVP ships `NoopExecutorAdapter`, which returns `dispatched=False` and
 `executor_invoked=False` even when the requested peer is named `opencode`,
 `codex`, or `claude-code`. It also ships `OutboxExecutorAdapter`, which writes a
-JSONL dispatch record to `.sisyphus/executor-outbox.jsonl` and returns
-`dispatched=True` while still recording `executor_invoked=False`. The outbox is
+JSONL dispatch record and returns `dispatched=True` while still recording
+`executor_invoked=False`. The outbox is
 append-only: `list-dispatches` materializes queued/claimed/completed/failed
 state, external peers report progress via `claim-dispatch`, `complete-dispatch`,
 and `fail-dispatch`, and completed/failed dispatches are terminal. That makes
@@ -133,7 +133,7 @@ external logs.
 
 ## Cron/event boundary
 
-`src/memento/events.py` converts cron/webhook payloads into durable
-`SisyphusTask` records and append-only audit events. Event ingestion returns
+`src/memento/events.py` converts cron/webhook payloads into durable task
+records and append-only audit events. Event ingestion returns
 `dispatched=False` and `executor_invoked=False`; implementation work must be
 started by an explicit lifecycle/worker action after safety and review checks.

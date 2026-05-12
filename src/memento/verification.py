@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from .domain import Evidence, SisyphusTask, TaskStatus
+from .domain import Evidence, MementoTask, TaskStatus
 from .state import SQLiteStateStore
 
 PASS_STATUSES = {"passed", "observed"}
@@ -23,7 +23,7 @@ def active_evidence_for_task(store: SQLiteStateStore, run_id: str, task_id: str)
     return [ev for ev in evidence if ev.id not in superseded_ids and ev.status != SUPERSEDED_STATUS]
 
 
-def evaluate_task(store: SQLiteStateStore, task: SisyphusTask) -> dict[str, Any]:
+def evaluate_task(store: SQLiteStateStore, task: MementoTask) -> dict[str, Any]:
     policy = task.verification_policy or {}
     required = list(policy.get("required_evidence") or policy.get("required_evidence_types") or [])
     evidence = active_evidence_for_task(store, task.run_id, task.id)

@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from memento.budget import evaluate_budget
-from memento.domain import Evidence, SisyphusRun, SisyphusTask, TaskStatus
+from memento.domain import Evidence, MementoRun, MementoTask, TaskStatus
 from memento.executors import ExecutorDispatchRequest, PeerExecutorAdapter
 from memento.graph_planning import propose_tasks_from_graph
 from memento.performance_memory import ExecutorPerformanceMemory
@@ -19,7 +19,7 @@ def test_goose_and_swe_agent_commands_are_capability_gated() -> None:
     assert DEFAULT_EXECUTORS["goose"].experimental is True
     assert DEFAULT_EXECUTORS["swe-agent"].preferred_task_kinds == ("issue_repair", "test_driven_fix")
 
-    issue_task = SisyphusTask(
+    issue_task = MementoTask(
         run_id="run_1",
         title="Repair issue",
         description="Fix failing regression",
@@ -32,7 +32,7 @@ def test_goose_and_swe_agent_commands_are_capability_gated() -> None:
     with_sandbox = route_task(issue_task, sandbox_available=True)
     assert with_sandbox["selected_executor"] == "swe-agent"
 
-    run = SisyphusRun(id="run_1", goal="repair", workspace="/tmp/repo")
+    run = MementoRun(id="run_1", goal="repair", workspace="/tmp/repo")
     payload = build_worker_payload(run, issue_task)
     adapter = PeerExecutorAdapter()
     goose = adapter.command_for(ExecutorDispatchRequest(payload=payload, executor="goose"))
@@ -94,9 +94,9 @@ def test_graph_derived_task_proposals_are_review_only() -> None:
 def test_repair_task_from_rejected_partial_work_blocks_downstream(tmp_path: Path) -> None:
     store = SQLiteStateStore(SQLiteStateStore.default_path(tmp_path))
     run = store.create_run(goal="repair", workspace=str(tmp_path))
-    original = store.save_task(SisyphusTask(run_id=run.id, title="Original", description="Implement", status=TaskStatus.REJECTED))
+    original = store.save_task(MementoTask(run_id=run.id, title="Original", description="Implement", status=TaskStatus.REJECTED))
     downstream = store.save_task(
-        SisyphusTask(run_id=run.id, title="Downstream", description="Depends", dependencies=(original.id,))
+        MementoTask(run_id=run.id, title="Downstream", description="Depends", dependencies=(original.id,))
     )
     evidence = store.save_evidence(
         Evidence(

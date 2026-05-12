@@ -1,6 +1,6 @@
 ---
 name: metis-planner
-description: Hermes-native Sisyphus planning, decomposition, risk, and acceptance-criteria discipline.
+description: Hermes-native Memento planning, decomposition, risk, and acceptance-criteria discipline.
 version: 0.1.0
 ---
 
@@ -8,7 +8,7 @@ version: 0.1.0
 
 ## Trigger
 
-Use when a Sisyphus run needs a draft plan, task decomposition, assumptions,
+Use when a Memento run needs a draft plan, task decomposition, assumptions,
 risks, acceptance criteria, or rollback/safety strategy before execution.
 
 ## Workflow

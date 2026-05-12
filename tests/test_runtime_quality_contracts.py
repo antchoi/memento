@@ -53,6 +53,24 @@ def test_ac16_test_suite_covers_core_contract_files() -> None:
     assert expected_contract_tests <= {path.name for path in (ROOT / "tests").glob("test_*.py")}
 
 
+def test_non_document_runtime_surface_uses_memento_vocabulary() -> None:
+    legacy_token = "sisy" + "phus"
+    searched_paths = [
+        *CORE_SOURCE.rglob("*.py"),
+        *Path(ROOT / "skills").rglob("SKILL.md"),
+        ROOT / "pyproject.toml",
+        ROOT / "scripts" / "verify-local.sh",
+    ]
+    offenders = {
+        str(path.relative_to(ROOT)): line_no
+        for path in searched_paths
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if legacy_token in line.lower()
+    }
+
+    assert offenders == {}
+
+
 def test_ac17_development_commands_document_lint_type_and_test_baseline() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -91,7 +109,7 @@ def test_ac19_docs_close_actor_input_output_runtime_boundaries() -> None:
         "hermes_plugin_command_layer",
         "metis_planner",
         "momus_reviewer",
-        "sisyphus_lifecycle_worker",
+        "memento_lifecycle_worker",
         "hephaestus_executor",
         "hermes_sheriff",
         "optional_external_executor_adapter",

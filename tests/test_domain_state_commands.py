@@ -12,17 +12,17 @@ from memento.domain import (
     PlanStatus,
     ReviewGate,
     RunStatus,
-    SisyphusPlan,
-    SisyphusRun,
-    SisyphusTask,
+    MementoPlan,
+    MementoRun,
+    MementoTask,
 )
 from memento.state import SQLiteStateStore
 
 
 def test_domain_models_round_trip_to_dict() -> None:
-    run = SisyphusRun(goal="ship plugin", workspace="/tmp/repo", actor="founder_user")
-    plan = SisyphusPlan(run_id=run.id, title="Plan", body="steps", status=PlanStatus.DRAFT)
-    task = SisyphusTask(run_id=run.id, title="Task", description="do it")
+    run = MementoRun(goal="ship plugin", workspace="/tmp/repo", actor="founder_user")
+    plan = MementoPlan(run_id=run.id, title="Plan", body="steps", status=PlanStatus.DRAFT)
+    task = MementoTask(run_id=run.id, title="Task", description="do it")
     gate = ReviewGate(run_id=run.id, kind=GateKind.PLAN_REVIEW, status=GateStatus.PASSED)
     evidence = Evidence(run_id=run.id, kind="test", summary="pytest passed")
     event = AuditEvent(run_id=run.id, actor="metis_planner", action="plan.created")
@@ -38,11 +38,11 @@ def test_sqlite_store_persists_all_entities_across_reopen(tmp_path: Path) -> Non
     db_path = tmp_path / "memento.sqlite3"
     store = SQLiteStateStore(db_path)
     run = store.create_run(goal="finish MVP", workspace=str(tmp_path))
-    plan = store.save_plan(SisyphusPlan(run_id=run.id, title="Draft", body="1. test"))
-    task = store.save_task(SisyphusTask(run_id=run.id, title="Implement", description="state"))
+    plan = store.save_plan(MementoPlan(run_id=run.id, title="Draft", body="1. test"))
+    task = store.save_task(MementoTask(run_id=run.id, title="Implement", description="state"))
     gate = store.save_gate(ReviewGate(run_id=run.id, kind=GateKind.PREFLIGHT_SAFETY))
     evidence = store.save_evidence(Evidence(run_id=run.id, kind="verification", summary="red test fails"))
-    event = store.append_audit(run.id, actor="sisyphus_lifecycle_worker", action="state.saved")
+    event = store.append_audit(run.id, actor="memento_lifecycle_worker", action="state.saved")
 
     reopened = SQLiteStateStore(db_path)
     assert reopened.get_run(run.id) == run
@@ -141,7 +141,7 @@ def test_init_creates_project_local_sqlite_and_doctor_reports_readiness(tmp_path
 
     assert result["ok"] is True
     db_path = Path(result["state"]["path"])
-    assert db_path == tmp_path / ".sisyphus" / "state.sqlite3"
+    assert db_path == tmp_path / ".memento" / "state.sqlite3"
     assert db_path.exists()
 
     doctor = service.doctor({"workspace": str(tmp_path)})
@@ -184,7 +184,7 @@ def test_project_local_sqlite_fallback_supports_full_lifecycle_across_service_re
     assert status["ok"] is True
     assert status["state"] == {
         "backend": "sqlite",
-        "path": str(tmp_path / ".sisyphus" / "state.sqlite3"),
+        "path": str(tmp_path / ".memento" / "state.sqlite3"),
     }
     assert status["run"]["source_of_truth"] == "sqlite"
     assert status["run"]["current_plan_id"] == draft["id"]

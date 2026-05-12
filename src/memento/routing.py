@@ -6,7 +6,7 @@ import shutil
 from dataclasses import dataclass
 from typing import Any
 
-from .domain import SisyphusTask
+from .domain import MementoTask
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -92,7 +92,7 @@ DEFAULT_EXECUTORS: dict[str, ExecutorCapability] = {
 
 
 def route_task(
-    task: SisyphusTask,
+    task: MementoTask,
     *,
     graph_state: str = "missing",
     memory_summary: str = "",

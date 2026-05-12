@@ -1,4 +1,4 @@
-"""Typed domain model for the Hermes-native Sisyphus lifecycle."""
+"""Typed domain model for the Hermes-native Memento lifecycle."""
 
 from __future__ import annotations
 
@@ -86,9 +86,9 @@ class RecordModel:
     def from_record(cls, record: dict[str, Any]) -> Self:
         kwargs = dict(record)
         enum_types = {
-            "SisyphusRun": {"status": RunStatus},
-            "SisyphusPlan": {"status": PlanStatus},
-            "SisyphusTask": {"status": TaskStatus},
+            "MementoRun": {"status": RunStatus},
+            "MementoPlan": {"status": PlanStatus},
+            "MementoTask": {"status": TaskStatus},
             "ReviewGate": {"kind": GateKind, "status": GateStatus},
         }.get(cls.__name__, {})
         for name in getattr(cls, "enum_fields", ()):  # type: ignore[arg-type]
@@ -110,7 +110,7 @@ class RecordModel:
 
 
 @dataclass(frozen=True, kw_only=True)
-class SisyphusRun(RecordModel):
+class MementoRun(RecordModel):
     goal: str
     workspace: str
     actor: str = "founder_user"
@@ -125,7 +125,7 @@ class SisyphusRun(RecordModel):
 
 
 @dataclass(frozen=True, kw_only=True)
-class SisyphusPlan(RecordModel):
+class MementoPlan(RecordModel):
     run_id: str
     title: str
     body: str
@@ -141,7 +141,7 @@ class SisyphusPlan(RecordModel):
 
 
 @dataclass(frozen=True, kw_only=True)
-class SisyphusTask(RecordModel):
+class MementoTask(RecordModel):
     run_id: str
     title: str
     description: str

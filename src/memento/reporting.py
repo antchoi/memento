@@ -1,4 +1,4 @@
-"""Telegram-friendly renderers for Sisyphus status and reports."""
+"""Telegram-friendly renderers for Memento status and reports."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 ROLE_LABELS = {
     "metis_planner": "Metis",
     "momus_reviewer": "Momus",
-    "sisyphus_lifecycle_worker": "Sisyphus",
+    "memento_lifecycle_worker": "Memento",
     "hephaestus_executor": "Hephaestus",
     "hermes_sheriff": "Hermes-Sheriff",
 }
@@ -61,7 +61,7 @@ def _render_pause_cancel_recovery(status: dict[str, Any]) -> list[str]:
 
 def render_status(status: dict[str, Any]) -> str:
     if not status.get("ok"):
-        return f"## Sisyphus status\nState: error\nError: {status.get('error', 'unknown')}"
+        return f"## Memento status\nState: error\nError: {status.get('error', 'unknown')}"
     run = status["run"]
     plans = status.get("plans", [])
     tasks = status.get("tasks", [])
@@ -76,7 +76,7 @@ def render_status(status: dict[str, Any]) -> str:
 
     return "\n".join(
         [
-            "## Sisyphus status",
+            "## Memento status",
             f"Run: {run['id']}",
             f"Goal: {run['goal']}",
             f"State: {run['status']}",

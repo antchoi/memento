@@ -1,134 +1,212 @@
-# memento
+# Memento
 
-Hermes-native Sisyphus plugin project.
+Memento is a Hermes-native lifecycle and evidence ledger for software work: it turns vague goals into durable runs, plans, tasks, review gates, dispatch records, and verification evidence that survive chat resets, process restarts, and disposable executor sessions.
 
-This repository is being implemented from the Ouroboros Seed at
-`.ouroboros/seeds/memento.seed.yaml`. The goal is to port the useful
-ideas of oh-my-openagent's Sisyphus/Ultraworker into a Hermes-native full plugin
-architecture: durable task lifecycle, Kanban-backed orchestration, profile-aware
-workers, review gates, and Telegram-friendly status reporting.
+## Why Memento exists
 
-## Current bootstrap
+Agent coding often fails because progress lives in the wrong place: a chat transcript, a TUI buffer, an executor-native session, or a self-reported summary. Memento keeps the source of truth outside those fragile contexts.
 
-AC01 repository bootstrap is represented by:
+Use Memento when you want to:
 
-- `pyproject.toml` — installable Python package metadata and test config.
-- `src/memento/` — importable package and plugin registration boundary.
-- `tests/` — pytest package with import/file-existence smoke tests.
-- `docs/architecture.md` — initial architecture note.
-- `skills/sisyphus-ultraworker/SKILL.md` — first bundled worker skill.
-- `.gitignore` — excludes Python/runtime/secrets artifacts.
-- `.ouroboros/seeds/memento.seed.yaml` — source Seed and AC traceability.
+- keep a canonical plan before implementation starts;
+- route work to humans, Hermes, or optional external executors without trusting their summaries blindly;
+- record evidence, review gates, approvals, and failures in project-local durable state;
+- recover long-running work after compaction, process restarts, or executor crashes;
+- report progress in Telegram-friendly Markdown without scraping logs.
 
-## Development commands
+## What Memento is — and is not
+
+Memento **is**:
+
+- a Python package and CLI (`memento`);
+- a Hermes plugin entry point (`memento.plugin`);
+- a lifecycle state model for runs, plans, tasks, gates, dispatches, audit events, and evidence;
+- a local-first durability layer using project-local SQLite and JSON state;
+- an extension boundary for optional workers such as Hermes profiles, Codex, Claude Code, OpenCode, OpenHands-style API workers, or other peers.
+
+Memento **is not**:
+
+- an OpenCode wrapper;
+- a compatibility shim for another lifecycle project;
+- a replacement for tests, review, or user approval;
+- a tool that treats executor self-report as proof;
+- dependent on private TUI/session state for correctness.
+
+## Quick install
+
+From the repository root:
+
+```bash
+python -m pip install -e .
+python -m pip install -e '.[dev]'  # optional: pytest and ruff
+memento doctor --json
+```
+
+Without installing the console script:
+
+```bash
+PYTHONPATH=src python -m memento.cli doctor --json
+```
+
+## Start in 5 minutes
+
+Run the local smoke contract:
+
+```bash
+memento sample-smoke --workspace /tmp/memento-sample --json
+memento status --workspace /tmp/memento-sample --json
+memento report --workspace /tmp/memento-sample
+```
+
+`sample-smoke` initializes a workspace, runs `doctor`, creates a sample run, enqueues a task, writes an outbox dispatch, claims/completes it without spawning an executor process, and proves `status`/`report` can rebuild from durable project-local state.
+
+## First 15 minutes
+
+1. **Check readiness**
+
+   ```bash
+   memento doctor --json
+   ```
+
+2. **Initialize a real workspace**
+
+   ```bash
+   memento init --workspace /path/to/repo --json
+   ```
+
+3. **Start a run**
+
+   ```bash
+   memento start --workspace /path/to/repo --goal "Ship the next verified slice" --allow-spike --json
+   ```
+
+4. **Create and approve a canonical plan**
+
+   ```bash
+   memento plan --workspace /path/to/repo --run-id run_... --title "Next slice" --body "Plan body" --json
+   memento approve-plan --workspace /path/to/repo --run-id run_... --plan-id plan_... --json
+   ```
+
+5. **Turn incoming work into a durable task**
+
+   ```bash
+   memento enqueue-event --workspace /path/to/repo --run-id run_... --title "Implement X" --body "Task details" --json
+   ```
+
+6. **Generate a worker payload or dispatch handoff**
+
+   ```bash
+   memento worker-payload --workspace /path/to/repo --run-id run_... --task-id task_... --json
+   memento dispatch-task --workspace /path/to/repo --run-id run_... --task-id task_... --executor hermes-profile --json
+   ```
+
+7. **Record completion with evidence**
+
+   ```bash
+   memento claim-dispatch --workspace /path/to/repo --dispatch-id dispatch_... --executor hermes-profile --json
+   memento complete-dispatch --workspace /path/to/repo --dispatch-id dispatch_... --summary "verified" --evidence-uri file://verification/task.log --json
+   ```
+
+8. **Report status**
+
+   ```bash
+   memento status --workspace /path/to/repo --run-id run_... --json
+   memento report --workspace /path/to/repo --run-id run_...
+   ```
+
+## Core lifecycle
+
+- **Run:** top-level unit of work tied to a workspace and goal.
+- **Plan:** draft or canonical implementation plan. Normal execution is gated on a canonical plan unless an explicit bounded spike is allowed.
+- **Task:** durable work item from a plan, user request, cron event, webhook, or manual enqueue.
+- **Dispatch:** auditable handoff to a human or optional executor. Dispatch records do not imply work happened unless evidence later proves it.
+- **Review gate:** preflight, plan review, implementation/spec review, quality review, final acceptance, approval, or release gate.
+- **Evidence:** trusted artifacts such as test output, CI status, lint output, verification logs, screenshots, or approval records.
+- **Report:** Telegram-friendly summary reconstructed from state, not from hidden executor memory.
+
+## Command map
+
+Read the full command guide in [`docs/commands.md`](docs/commands.md). The main workflows are:
+
+- setup and health: `doctor`, `init`, `sample-smoke`;
+- lifecycle: `start`, `plan`, `approve-plan`, `pause`, `resume`, `cancel`, `status`, `report`;
+- tasks and handoff: `enqueue-event`, `worker-payload`, `dispatch-task`, `list-dispatches`, `claim-dispatch`, `complete-dispatch`, `fail-dispatch`;
+- verification and context: `context-bundle`, `route-task`, `verify-task`, `graph-status`, `graph-update`, `memory-prefetch`, `memory-writeback`;
+- review: `review`.
+
+## Hermes plugin boundary
+
+The local Hermes plugin entry point is `memento.plugin:register`. The package also advertises the Python entry point group:
+
+```toml
+[project.entry-points."hermes_agent.plugins"]
+memento = "memento.plugin"
+```
+
+The registration boundary is intentionally runtime-light. A Hermes-like context only needs:
+
+```python
+ctx.register_command(name, handler, **metadata)
+```
+
+`doctor` and `tests/test_plugin_registration.py` are the executable registration contract.
+
+## Documentation
+
+Start here:
+
+- [`docs/README.md`](docs/README.md) — documentation map.
+- [`docs/getting-started.md`](docs/getting-started.md) — install, smoke test, and first run.
+- [`docs/concepts.md`](docs/concepts.md) — lifecycle concepts and trust model.
+- [`docs/commands.md`](docs/commands.md) — command reference by workflow.
+- [`docs/operators-guide.md`](docs/operators-guide.md) — safety, recovery, cron/events, reporting.
+- [`docs/architecture.md`](docs/architecture.md) — implementation architecture and extension points.
+- [`docs/user-guide.md`](docs/user-guide.md) — compact end-to-end guide.
+
+## Development verification
 
 ```bash
 python -m pytest -q
 python -m ruff check .
 python -m compileall -q src tests
 PYTHONPATH=src python -m memento.cli doctor --json
-```
-
-For normal package use, install the project in editable mode first:
-
-```bash
-python -m pip install -e .
-python -m pip install -e '.[dev]'  # optional: test/lint tools
-memento doctor --json
-memento sample-smoke --workspace /tmp/memento-sample --json
-memento status --workspace /tmp/memento-sample --json
-```
-
-`sample-smoke` is the mechanical local install/load contract: it initializes a
-sample workspace, runs `doctor`, creates a sample run, enqueues/dispatches/
-claims/completes a sample outbox task without spawning an executor process, and
-proves `status`/`report` can rebuild from the project-local SQLite source of
-truth.
-
-For release-candidate verification, run the bundled smoke script:
-
-```bash
+PYTHONPATH=src python -m memento.cli sample-smoke --workspace /tmp/memento-sample --json
 scripts/verify-local.sh
 ```
 
-`doctor` reports the concrete readiness checks that matter for local Hermes use:
-package import, console script metadata, `plugin.register(ctx)` smoke output,
-bundled skill frontmatter, workspace `.sisyphus/` writability, runtime path
-locations, `.gitignore` coverage for generated state, and the OpenCode import
-independence scan.
+## Seed and acceptance criteria traceability
 
-## Hermes plugin registration path
+The implementation history is driven by the Ouroboros source Seed at `.ouroboros/seeds/memento.seed.yaml` and follow-on phase seeds:
 
-After `python -m pip install -e .`, configure Hermes to load the local Python
-plugin module `memento.plugin` and call its `register(ctx)` entry point.
-The registration boundary is intentionally runtime-light and registers the
-command namespace as `memento.*`, including `memento.doctor` and
-`memento.sample-smoke`. A minimal Hermes-like context only needs a
-`register_command(name, handler, **metadata)` method; the fake-context tests in
-`tests/test_plugin_registration.py` are the executable contract for this path.
-If registration fails, run `memento doctor --json` and inspect
-`checks.plugin_register_smoke`, `plugin_registration.commands`, and
-`checks.cli_entrypoint` first.
-## Acceptance criteria traceability
+- `.ouroboros/seeds/memento.seed.yaml`
+- `.ouroboros/seeds/memento-mvp.seed.yaml`
+- `.ouroboros/seeds/memento-v1.seed.yaml`
+- `.ouroboros/seeds/memento-v2.seed.yaml`
+- `.ouroboros/seeds/memento-v3.seed.yaml`
 
-- AC01_repo_bootstrap: `tests/test_bootstrap.py` verifies required files and
-  package import smoke behavior.
-- AC02_plugin_registration: `tests/test_plugin_registration.py` verifies the
-  runtime-light `register(ctx)` entry point and full `memento.*` command
-  registration against a fake Hermes context.
-- AC03_command_surface: `src/memento/commands.py` exposes `init`,
-  `start`, `plan`, `approve-plan`, `status`, `pause`, `resume`, `cancel`,
-  `review`, `report`, `doctor`, `sample-smoke`, `enqueue-event`,
-  `worker-payload`, `dispatch-task`, `list-dispatches`, `claim-dispatch`,
-  `complete-dispatch`, and `fail-dispatch` handlers with structured results.
-- AC04_draft_to_canonical_plan: `approve-plan` promotes draft plans to
-  canonical and blocks normal execution until a canonical plan exists unless a
-  bounded spike is explicitly allowed.
-- AC05_durable_state / AC22_sqlite_fallback_contract: `SQLiteStateStore`
-  persists runs, plans, tasks, gates, evidence, and append-only audit events
-  across process restarts; command `status`/`report` results expose the active
-  fallback backend and project-local `.sisyphus/state.sqlite3` path.
-- AC06_kanban_boundary: `state.py` defines a fake-testable Kanban adapter
-  protocol, `kanban.py` provides a dependency-free JSON Kanban board adapter,
-  and the runtime falls back to project-local SQLite when Kanban is unavailable.
-- AC07_preflight_safety / AC08_destructive_guardrails: `safety.py` provides git
-  preflight inspection and destructive-operation classification primitives.
-- AC09_worker_context / optional executor extension: `workers.py` builds
-  explicit scoped payloads with repo path, task description, acceptance
-  criteria, safety constraints, and reporting contract; `executors/` exposes a
-  no-op adapter plus a durable append-only JSONL outbox adapter for explicit
-  peer handoff. No payload relies on hidden chat/TUI context, outbox dispatch
-  records `executor_invoked=false` until a separate peer consumes them, and
-  claim/complete/fail lifecycle commands materialize task/evidence/audit state.
-- AC10_review_gates / AC11_reporting: review gate persistence and
-  Telegram-friendly status/report rendering are covered by tests.
-- AC12_cancellation_pause: pause/cancel transitions record audit events and
-  status/report output includes incomplete tasks plus known child process handles
-  when provided.
-- AC13_bundled_skills: Sisyphus, Metis, and Momus role skills live under
-  `skills/` with trigger/workflow/pitfalls/verification sections.
-- AC14_documentation: `docs/user-guide.md` covers install/setup, command usage,
-  safety, recovery, cron/event task ingestion, and executor extension.
-- AC15_no_opencode_dependency: `tests/test_runtime_quality_contracts.py` scans
-  core source imports for OpenCode/oh-my-openagent packages and `doctor` exposes
-  the mechanical scan result.
-- AC16_test_suite: `python -m pytest -q` is the canonical local suite and covers
-  domain models, SQLite/Kanban boundaries, command handlers, safety, reporting,
-  plugin registration, skills, and runtime quality contracts.
-- AC17_lint_type_baseline: development commands document and verify the current
-  `pytest`, `ruff`, and `compileall` baseline.
-- AC18_seed_traceability: this README links the source Seed at
-  `.ouroboros/seeds/memento.seed.yaml` and maps every Seed acceptance
-  criterion to code, docs, or test evidence.
-- AC19_actor_input_output_runtime_closure: `docs/architecture.md` and command
-  result schemas model the Seed actors, accepted inputs, produced outputs,
-  runtime context, MVP boundaries, and deferred/non-goal boundaries.
-- AC20_cron_event_to_task_only: `events.py` and `CommandService.enqueue_event`
-  create durable task records from cron/webhook payloads without invoking an
-  executor adapter.
-- AC21_role_last_action_visibility: `reporting.py` renders latest Metis,
-  Momus, Sisyphus, Hephaestus, and Hermes-Sheriff actions in both status and
-  report output, covered by `tests/test_safety_reporting.py`.
-- AC22_sqlite_fallback_contract: `tests/test_domain_state_commands.py` verifies
-  project-local SQLite persistence and command recovery without a live Kanban
-  backend.
+Acceptance-criteria tokens retained for traceability:
+
+- `AC01_repo_bootstrap`
+- `AC02_plugin_registration`
+- `AC03_command_surface`
+- `AC04_draft_to_canonical_plan`
+- `AC05_durable_state`
+- `AC06_kanban_boundary`
+- `AC07_preflight_safety`
+- `AC08_destructive_guardrails`
+- `AC09_worker_context`
+- `AC10_review_gates`
+- `AC11_reporting`
+- `AC12_cancellation_pause`
+- `AC13_bundled_skills`
+- `AC14_documentation`
+- `AC15_no_opencode_dependency`
+- `AC16_test_suite`
+- `AC17_lint_type_baseline`
+- `AC18_seed_traceability`
+- `AC19_actor_input_output_runtime_closure`
+- `AC20_cron_event_to_task_only`
+- `AC21_role_last_action_visibility`
+- `AC22_sqlite_fallback_contract`
+
+Use the seed files for detailed acceptance criteria. The README stays focused on first success and orientation while preserving mechanical traceability.

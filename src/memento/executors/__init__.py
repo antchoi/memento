@@ -1,6 +1,6 @@
 """Optional executor peer extension boundary.
 
-Executor adapters are peers, not the source of truth.  Sisyphus writes durable
+Executor adapters are peers, not the source of truth.  Memento writes durable
 state first, then either queues an outbox record or builds an explicit command
 for an external worker.  Process spawning is opt-in so event/cron ingestion never
 accidentally launches OpenCode, Codex, Claude Code, or nested Hermes sessions.
@@ -90,7 +90,7 @@ class OutboxExecutorAdapter:
 
     @staticmethod
     def default_path(workspace: str | Path) -> Path:
-        return Path(workspace) / ".sisyphus" / "executor-outbox.jsonl"
+        return Path(workspace) / ".memento" / "executor-outbox.jsonl"
 
     def dispatch(self, request: ExecutorDispatchRequest) -> dict[str, Any]:
         record = ExecutorOutboxRecord(

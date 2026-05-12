@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from memento.commands import CommandService
-from memento.domain import SisyphusTask
+from memento.domain import MementoTask
 from memento.state import SQLiteStateStore
 from memento.workers import build_worker_payload
 from memento.executors import NoopExecutorAdapter, ExecutorDispatchRequest
@@ -13,14 +13,14 @@ class FakeKanbanAdapter:
     available = True
 
     def __init__(self) -> None:
-        self.tasks: list[SisyphusTask] = []
+        self.tasks: list[MementoTask] = []
 
-    def create_or_update_task(self, task: SisyphusTask) -> SisyphusTask:
+    def create_or_update_task(self, task: MementoTask) -> MementoTask:
         self.tasks = [existing for existing in self.tasks if existing.id != task.id]
         self.tasks.append(task)
         return task
 
-    def list_tasks(self, run_id: str) -> list[SisyphusTask]:
+    def list_tasks(self, run_id: str) -> list[MementoTask]:
         return [task for task in self.tasks if task.run_id == run_id]
 
 
@@ -174,7 +174,7 @@ def test_build_worker_payload_round_trip_from_domain_models(tmp_path: Path) -> N
     store = SQLiteStateStore(tmp_path / "state.db")
     run = store.create_run(goal="ship", workspace=str(tmp_path))
     task = store.save_task(
-        SisyphusTask(
+        MementoTask(
             run_id=run.id,
             title="Task",
             description="Do scoped work",
@@ -194,7 +194,7 @@ def test_optional_executor_boundary_is_noop_and_never_claims_to_dispatch(tmp_pat
     store = SQLiteStateStore(tmp_path / "state.db")
     run = store.create_run(goal="ship", workspace=str(tmp_path))
     task = store.save_task(
-        SisyphusTask(
+        MementoTask(
             run_id=run.id,
             title="Task",
             description="Do scoped work",

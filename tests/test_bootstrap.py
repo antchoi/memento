@@ -10,7 +10,7 @@ def test_ac01_repository_bootstrap_files_exist():
         "src/memento/plugin.py",
         "tests/__init__.py",
         "docs/architecture.md",
-        "skills/sisyphus-ultraworker/SKILL.md",
+        "skills/memento-lifecycle-worker/SKILL.md",
         ".gitignore",
         ".ouroboros/seeds/memento.seed.yaml",
     ]

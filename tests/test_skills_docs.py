@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-REQUIRED_SKILLS = ("sisyphus-ultraworker", "metis-planner", "momus-reviewer")
+REQUIRED_SKILLS = ("memento-lifecycle-worker", "metis-planner", "momus-reviewer")
 
 
 def _frontmatter(path: Path) -> dict[str, str]:
@@ -41,7 +41,7 @@ def test_documentation_covers_install_commands_safety_recovery_and_executor_exte
     for phrase in (
         "python -m pip install -e",
         "memento doctor --json",
-        ".sisyphus/state.sqlite3",
+        "SQLite lifecycle state",
         "Cron/webhook integrations may enqueue durable tasks only",
         "Optional executor extension",
         "git reset --hard",

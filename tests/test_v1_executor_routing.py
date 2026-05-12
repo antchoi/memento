@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from memento.commands import CommandService
-from memento.domain import SisyphusTask
+from memento.domain import MementoTask
 from memento.executors import ExecutorDispatchRequest, PeerExecutorAdapter
 from memento.state import SQLiteStateStore
 from memento.worktree import isolated_worktree_plan
@@ -98,8 +98,8 @@ def test_isolated_worktree_dispatch_metadata_and_graph_checkpoint(tmp_path: Path
 
 
 def test_isolated_worktree_plan_is_deterministic(tmp_path: Path) -> None:
-    task = SisyphusTask(run_id="run_1", title="Task", description="desc")
+    task = MementoTask(run_id="run_1", title="Task", description="desc")
     plan = isolated_worktree_plan(tmp_path, task)
     assert plan["isolation"] == "git_worktree"
     assert task.id in plan["branch"]
-    assert str(tmp_path / ".sisyphus" / "worktrees") in plan["path"]
+    assert str(tmp_path / ".memento" / "worktrees") in plan["path"]

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from memento.commands import CommandService
-from memento.domain import Evidence, SisyphusTask, TaskStatus
+from memento.domain import Evidence, MementoTask, TaskStatus
 from memento.memory import filter_memory_writeback
 from memento.state import SQLiteStateStore
 
@@ -15,7 +15,7 @@ def test_task_graph_ready_cycle_and_restart(tmp_path: Path) -> None:
     store.approve_plan(run.id, plan.id)
 
     a = store.save_task(
-        SisyphusTask(
+        MementoTask(
             run_id=run.id,
             title="A",
             description="first",
@@ -25,7 +25,7 @@ def test_task_graph_ready_cycle_and_restart(tmp_path: Path) -> None:
         )
     )
     b = store.save_task(
-        SisyphusTask(
+        MementoTask(
             run_id=run.id,
             title="B",
             description="second",
@@ -36,7 +36,7 @@ def test_task_graph_ready_cycle_and_restart(tmp_path: Path) -> None:
     )
     assert store.ready_tasks(run.id)[0].id == b.id
 
-    store.save_task(SisyphusTask(run_id=run.id, title="C", description="cycle", dependencies=("missing",)))
+    store.save_task(MementoTask(run_id=run.id, title="C", description="cycle", dependencies=("missing",)))
     assert store.validate_task_graph(run.id)["ok"] is False
 
     restarted = SQLiteStateStore(SQLiteStateStore.default_path(tmp_path))
@@ -83,7 +83,7 @@ def test_append_only_evidence_and_verification_verdict(tmp_path: Path) -> None:
     plan = store.save_plan_for_test(run.id, title="Plan", body="Plan body")
     store.approve_plan(run.id, plan.id)
     task = store.save_task(
-        SisyphusTask(
+        MementoTask(
             run_id=run.id,
             title="Task",
             description="Needs test evidence",

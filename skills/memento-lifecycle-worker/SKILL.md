@@ -1,14 +1,14 @@
 ---
-name: sisyphus-ultraworker
+name: memento-lifecycle-worker
 description: Durable Hermes-native long-horizon coding worker discipline.
 version: 0.1.0
 ---
 
-# Sisyphus Ultraworker
+# Memento Lifecycle Worker
 
 ## Trigger
 
-Use when a Sisyphus task has an approved plan, scoped repository path, explicit
+Use when a Memento task has an approved plan, scoped repository path, explicit
 acceptance criteria, and safety constraints.
 
 ## Workflow

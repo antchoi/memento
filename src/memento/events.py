@@ -9,14 +9,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .domain import SisyphusTask, TaskStatus
+from .domain import MementoTask, TaskStatus
 from .state import SQLiteStateStore
 
 
 @dataclass(frozen=True, kw_only=True)
 class EventIngestionResult:
     ok: bool
-    task: SisyphusTask
+    task: MementoTask
     dispatched: bool = False
     executor_invoked: bool = False
 
@@ -51,7 +51,7 @@ def enqueue_event_task(store: SQLiteStateStore, payload: dict[str, Any]) -> Even
         verification_policy = {"required_evidence": ["dispatch_result"]}
 
     task = store.save_task(
-        SisyphusTask(
+        MementoTask(
             run_id=run_id,
             title=title,
             description=description,
@@ -68,7 +68,7 @@ def enqueue_event_task(store: SQLiteStateStore, payload: dict[str, Any]) -> Even
     )
     store.append_audit(
         run_id,
-        actor="sisyphus_lifecycle_worker",
+        actor="memento_lifecycle_worker",
         action="task.enqueued_from_event",
         summary=title,
         payload={"source": source, "task_id": task.id},

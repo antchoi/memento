@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from .domain import SisyphusRun, SisyphusTask
+from .domain import MementoRun, MementoTask
 from .safety import render_worker_safety_constraints
 
 
@@ -45,7 +45,7 @@ class WorkerPayload:
         return record
 
 
-def build_worker_payload(run: SisyphusRun, task: SisyphusTask) -> WorkerPayload:
+def build_worker_payload(run: MementoRun, task: MementoTask) -> WorkerPayload:
     """Build a complete worker context packet for a scoped task."""
 
     return WorkerPayload(

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from .domain import Evidence, SisyphusTask, TaskStatus
+from .domain import Evidence, MementoTask, TaskStatus
 from .state import SQLiteStateStore
 
 
-def create_repair_task(store: SQLiteStateStore, source_task: SisyphusTask, evidence: Evidence) -> SisyphusTask:
+def create_repair_task(store: SQLiteStateStore, source_task: MementoTask, evidence: Evidence) -> MementoTask:
     failed_requirements = list(evidence.content_ref.get("failed_requirements") or [])
     diff_ref = evidence.content_ref.get("diff_ref")
     description = "Repair rejected/partial work from " + source_task.id
@@ -21,7 +21,7 @@ def create_repair_task(store: SQLiteStateStore, source_task: SisyphusTask, evide
             "quarantined_diff_ref": diff_ref,
         }
     )
-    repair = SisyphusTask(
+    repair = MementoTask(
         run_id=source_task.run_id,
         title=f"Repair {source_task.title}",
         description=description,
