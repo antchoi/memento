@@ -95,6 +95,22 @@ def test_external_ci_evidence_and_release_approval_gate(tmp_path: Path) -> None:
     assert release_gate_satisfied(store, run.id, required_checks=("github_actions",), required_approvals=1)["ok"] is True
 
 
+def test_negative_approval_response_does_not_satisfy_release_gate(tmp_path: Path) -> None:
+    store = SQLiteStateStore(SQLiteStateStore.default_path(tmp_path))
+    run = store.create_run(goal="release", workspace=str(tmp_path))
+    record_approval(
+        store,
+        run_id=run.id,
+        actor="c",
+        scope={"kind": "release", "id": run.id},
+        prompt="Approve release?",
+        response="I do not approve this release",
+    )
+    gate = release_gate_satisfied(store, run.id, required_approvals=1)
+    assert gate["ok"] is False
+    assert gate["missing_approvals"] == 1
+
+
 def test_recover_long_running_jobs_from_canonical_state(tmp_path: Path) -> None:
     store = SQLiteStateStore(SQLiteStateStore.default_path(tmp_path))
     run = store.create_run(goal="recover", workspace=str(tmp_path))

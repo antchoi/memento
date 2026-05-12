@@ -8,6 +8,14 @@ from .domain import Evidence
 from .state import SQLiteStateStore
 
 
+APPROVAL_RESPONSES = {"approved", "approve", "yes", "y", "ok", "승인", "승인함"}
+
+
+def _is_positive_approval(response: str) -> bool:
+    normalized = response.strip().lower().strip(".!?。")
+    return normalized in APPROVAL_RESPONSES
+
+
 def record_approval(
     store: SQLiteStateStore,
     *,
@@ -23,7 +31,7 @@ def record_approval(
         type="user_approval",
         summary=f"Approval from {actor}: {response}",
         trust_level="trusted",
-        status="passed" if "approve" in response.lower() else "observed",
+        status="passed" if _is_positive_approval(response) else "observed",
         source={"kind": "user", "actor": actor},
         content_ref={"kind": "approval", "scope": scope, "prompt": prompt, "response": response},
     )
