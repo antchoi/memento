@@ -1,15 +1,16 @@
 """Optional executor peer extension boundary.
 
-The MVP exposes this interface so future OpenCode, Codex, Claude Code, or
-Hermes-profile adapters can be added as peers without becoming the Sisyphus
-source of truth. The default adapter is intentionally a no-op: cron/event
-ingestion and worker-payload generation may prepare durable work, but they must
-not execute implementation work directly.
+Executor adapters are peers, not the source of truth.  Sisyphus writes durable
+state first, then either queues an outbox record or builds an explicit command
+for an external worker.  Process spawning is opt-in so event/cron ingestion never
+accidentally launches OpenCode, Codex, Claude Code, or nested Hermes sessions.
 """
 
 from __future__ import annotations
 
 import json
+import subprocess
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -18,22 +19,25 @@ from uuid import uuid4
 from sisyphus_hermes.domain import utc_now
 from sisyphus_hermes.workers import WorkerPayload
 
+ProcessRunner = Callable[[Sequence[str], Path], dict[str, Any]]
+
 
 @dataclass(frozen=True, kw_only=True)
 class ExecutorDispatchRequest:
-    """Explicit request packet for a future executor peer."""
+    """Explicit request packet for an executor peer."""
 
     payload: WorkerPayload
     executor: str = "hermes-profile"
     reason: str = "extension point"
+    invoke: bool = False
 
 
 class ExecutorAdapter(Protocol):
-    """Protocol implemented by future executor peers.
+    """Protocol implemented by executor peers.
 
-    Implementations may dispatch to Hermes profiles, delegate_task, Codex,
-    Claude Code, or OpenCode later. Core lifecycle code must remain independent
-    of those implementations and keep durable state as the source of truth.
+    Implementations may dispatch to Hermes profiles, Codex, Claude Code, or
+    OpenCode.  Core lifecycle code remains independent and keeps durable state
+    as the source of truth.
     """
 
     def dispatch(self, request: ExecutorDispatchRequest) -> dict[str, Any]:
@@ -41,7 +45,7 @@ class ExecutorAdapter(Protocol):
 
 
 class NoopExecutorAdapter:
-    """MVP executor adapter that documents the boundary without executing work."""
+    """Executor adapter that documents the boundary without executing work."""
 
     def dispatch(self, request: ExecutorDispatchRequest) -> dict[str, Any]:
         return {
@@ -176,10 +180,87 @@ class OutboxExecutorAdapter:
         return events
 
 
+class PeerExecutorAdapter:
+    """Build and optionally spawn a peer executor command.
+
+    Supported executor names:
+    - ``hermes-profile[:profile]`` → ``hermes [--profile profile] chat -q ...``
+    - ``opencode`` → ``opencode run ...``
+    - ``codex`` → ``codex exec ...``
+    - ``claude-code`` → ``claude -p ...``
+
+    ``invoke`` must be true on the request for a process to be started.  The
+    default is dry-run command construction, which is safe for doctor/smoke and
+    for event-driven ingestion.
+    """
+
+    def __init__(self, *, runner: ProcessRunner | None = None) -> None:
+        self._runner = runner or self._subprocess_runner
+
+    def dispatch(self, request: ExecutorDispatchRequest) -> dict[str, Any]:
+        command = self.command_for(request)
+        result = {
+            "ok": True,
+            "dispatched": request.invoke,
+            "executor_invoked": False,
+            "executor": request.executor,
+            "reason": request.reason,
+            "command": command,
+            "cwd": request.payload.repo_path,
+            "payload": request.payload.to_record(),
+            "invocation_policy": "explicit_invoke_required",
+        }
+        if not request.invoke:
+            return result
+        try:
+            run_result = self._runner(command, Path(request.payload.repo_path))
+        except OSError as exc:
+            return {
+                **result,
+                "ok": False,
+                "dispatched": False,
+                "executor_invoked": False,
+                "error": f"failed_to_invoke_executor: {type(exc).__name__}: {exc}",
+            }
+        return {**result, "executor_invoked": True, "process": run_result}
+
+    def command_for(self, request: ExecutorDispatchRequest) -> list[str]:
+        payload = request.payload
+        prompt = self._prompt_for(payload)
+        executor, _, qualifier = request.executor.partition(":")
+        if executor == "hermes-profile":
+            command = ["hermes"]
+            if qualifier:
+                command.extend(["--profile", qualifier])
+            command.extend(["chat", "-q", prompt])
+            return command
+        if executor == "opencode":
+            return ["opencode", "run", prompt]
+        if executor == "codex":
+            return ["codex", "exec", prompt]
+        if executor in {"claude", "claude-code"}:
+            return ["claude", "-p", prompt]
+        raise ValueError(f"unsupported executor peer: {request.executor}")
+
+    def _prompt_for(self, payload: WorkerPayload) -> str:
+        record = payload.to_record()
+        return (
+            "Execute this sisyphus-hermes worker payload. "
+            "Respect safety_constraints, do not use destructive git operations, "
+            "and report evidence before marking complete.\n"
+            f"```json\n{json.dumps(record, sort_keys=True, indent=2)}\n```"
+        )
+
+    def _subprocess_runner(self, cmd: Sequence[str], cwd: Path) -> dict[str, Any]:
+        process = subprocess.Popen(cmd, cwd=cwd)
+        return {"pid": process.pid}
+
+
 __all__ = [
     "ExecutorAdapter",
     "ExecutorDispatchRequest",
     "ExecutorOutboxRecord",
     "NoopExecutorAdapter",
     "OutboxExecutorAdapter",
+    "PeerExecutorAdapter",
 ]

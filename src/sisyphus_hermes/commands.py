@@ -22,6 +22,7 @@ from .domain import (
 )
 from .events import enqueue_event_task
 from .executors import ExecutorDispatchRequest, OutboxExecutorAdapter
+from .kanban import HermesKanbanCliAdapter, JsonKanbanAdapter
 from .state import SQLiteStateStore
 from .workers import build_worker_payload
 
@@ -100,6 +101,21 @@ def _cli_entrypoint_check() -> dict[str, Any]:
     return {
         "status": "ok" if target == "sisyphus_hermes.cli:main" else "blocked",
         "console_script": "sisyphus-hermes",
+        "target": target,
+    }
+
+
+def _hermes_plugin_entrypoint_check() -> dict[str, Any]:
+    pyproject_path = _project_root() / "pyproject.toml"
+    try:
+        pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+        target = pyproject["project"]["entry-points"]["hermes_agent.plugins"]["sisyphus-hermes"]
+    except Exception as exc:  # pragma: no cover - defensive diagnostic path
+        return {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
+    return {
+        "status": "ok" if target == "sisyphus_hermes.plugin" else "blocked",
+        "entrypoint_group": "hermes_agent.plugins",
+        "name": "sisyphus-hermes",
         "target": target,
     }
 
@@ -184,7 +200,21 @@ class CommandService:
         if self.store is not None:
             return self.store
         workspace = args.get("workspace") or Path.cwd()
-        return SQLiteStateStore(SQLiteStateStore.default_path(workspace))
+        kanban = self._kanban_adapter_for(args)
+        return SQLiteStateStore(SQLiteStateStore.default_path(workspace), kanban=kanban)
+
+    def _kanban_adapter_for(self, args: dict[str, Any]) -> Any:
+        backend = str(args.get("kanban_backend") or "").strip()
+        if args.get("kanban_path"):
+            return JsonKanbanAdapter(args["kanban_path"])
+        if backend == "hermes-cli" or args.get("kanban_board"):
+            return HermesKanbanCliAdapter(
+                board=args.get("kanban_board"),
+                tenant=str(args.get("kanban_tenant") or "sisyphus-hermes"),
+                assignee=args.get("kanban_assignee"),
+                workspace=args.get("kanban_workspace"),
+            )
+        return None
 
     def handler_for(self, name: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
         attr = name.replace("-", "_")
@@ -211,6 +241,7 @@ class CommandService:
         import_scan = _scan_core_imports_for_optional_executor_dependencies()
         package_import = _package_import_check()
         cli_entrypoint = _cli_entrypoint_check()
+        hermes_entrypoint = _hermes_plugin_entrypoint_check()
         plugin_registration = _plugin_registration_smoke()
         workspace_writable = _workspace_writable_check(workspace)
         runtime_gitignored = _runtime_gitignored_check()
@@ -226,6 +257,8 @@ class CommandService:
                 "version": package_import.get("version"),
                 "console_script": cli_entrypoint.get("console_script"),
                 "entrypoint_target": cli_entrypoint.get("target"),
+                "hermes_plugin_entrypoint_group": hermes_entrypoint.get("entrypoint_group"),
+                "hermes_plugin_entrypoint_target": hermes_entrypoint.get("target"),
             },
             "plugin_registration": {
                 "registered": plugin_registration.get("registered", False),
@@ -241,6 +274,7 @@ class CommandService:
                 "kanban": "optional_unavailable_using_sqlite",
                 "package_import": package_import["status"],
                 "cli_entrypoint": cli_entrypoint["status"],
+                "hermes_plugin_entrypoint": hermes_entrypoint["status"],
                 "plugin_register_smoke": plugin_registration["status"],
                 "workspace_writable": workspace_writable["status"],
                 "runtime_gitignored": runtime_gitignored["status"],

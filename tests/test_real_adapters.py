@@ -4,9 +4,13 @@ import json
 from pathlib import Path
 
 from sisyphus_hermes.commands import CommandService
-from sisyphus_hermes.domain import SisyphusTask
-from sisyphus_hermes.executors import ExecutorDispatchRequest, OutboxExecutorAdapter
-from sisyphus_hermes.kanban import JsonKanbanAdapter
+from sisyphus_hermes.domain import SisyphusTask, TaskStatus
+from sisyphus_hermes.executors import (
+    ExecutorDispatchRequest,
+    OutboxExecutorAdapter,
+    PeerExecutorAdapter,
+)
+from sisyphus_hermes.kanban import HermesKanbanCliAdapter, JsonKanbanAdapter
 from sisyphus_hermes.state import SQLiteStateStore
 from sisyphus_hermes.workers import build_worker_payload
 
@@ -55,6 +59,71 @@ def test_json_kanban_adapter_updates_existing_card_instead_of_duplicating(tmp_pa
     assert len(json.loads(board_path.read_text(encoding="utf-8"))["cards"]) == 1
 
 
+def test_hermes_kanban_cli_adapter_uses_public_json_cli_contract(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+    task = SisyphusTask(
+        run_id="run_123",
+        title="Implement live adapter",
+        description=str(tmp_path),
+        status=TaskStatus.PENDING,
+    )
+
+    def runner(cmd: list[str]) -> dict[str, object]:
+        calls.append(cmd)
+        if "create" in cmd:
+            body = cmd[cmd.index("--body") + 1]
+            return {"exit_code": 0, "stdout": json.dumps({"id": "kb_1", "body": body})}
+        return {
+            "exit_code": 0,
+            "stdout": json.dumps(
+                {"tasks": [{"id": "kb_1", "body": json.dumps({"sisyphus_task": task.to_record()})}]}
+            ),
+        }
+
+    adapter = HermesKanbanCliAdapter(board="sisyphus", tenant="sisyphus-hermes", runner=runner)
+
+    saved = adapter.create_or_update_task(task)
+    listed = adapter.list_tasks("run_123")
+
+    assert saved.id == task.id
+    assert listed == [task]
+    assert calls[0][:4] == ["hermes", "kanban", "--board", "sisyphus"]
+    assert "--idempotency-key" in calls[0]
+    assert f"sisyphus-hermes:{task.id}" in calls[0]
+    assert calls[1] == ["hermes", "kanban", "--board", "sisyphus", "list", "--tenant", "sisyphus-hermes", "--json"]
+
+
+def test_hermes_kanban_cli_adapter_reports_subprocess_failures() -> None:
+    adapter = HermesKanbanCliAdapter(runner=lambda _cmd: {"exit_code": 127, "stderr": "hermes missing"})
+
+    try:
+        adapter.list_tasks("run_missing")
+    except RuntimeError as exc:
+        assert "hermes missing" in str(exc)
+    else:  # pragma: no cover - failure branch
+        raise AssertionError("expected RuntimeError for failed Hermes CLI invocation")
+
+
+def test_hermes_kanban_cli_adapter_reports_invalid_json() -> None:
+    adapter = HermesKanbanCliAdapter(runner=lambda _cmd: {"exit_code": 0, "stdout": "not json"})
+
+    try:
+        adapter.list_tasks("run_invalid")
+    except RuntimeError as exc:
+        assert "non-JSON" in str(exc)
+    else:  # pragma: no cover - failure branch
+        raise AssertionError("expected RuntimeError for invalid Hermes CLI JSON")
+
+
+def test_hermes_kanban_subprocess_runner_converts_oserror_to_failure() -> None:
+    adapter = HermesKanbanCliAdapter(hermes_command="definitely-not-a-hermes-binary")
+
+    result = adapter._subprocess_runner(["definitely-not-a-hermes-binary", "kanban", "list", "--json"])
+
+    assert result["exit_code"] == 127
+    assert "failed to execute Hermes Kanban CLI" in result["stderr"]
+
+
 def test_outbox_executor_adapter_records_explicit_dispatch_without_spawning_process(tmp_path: Path) -> None:
     store = SQLiteStateStore(tmp_path / "state.db")
     run = store.create_run(goal="ship executor adapter", workspace=str(tmp_path))
@@ -76,6 +145,48 @@ def test_outbox_executor_adapter_records_explicit_dispatch_without_spawning_proc
     assert record["executor"] == "hermes-profile"
     assert record["payload"]["task_id"] == task.id
     assert record["invocation_policy"] == "outbox_only_no_process_spawn"
+
+
+def test_peer_executor_adapter_builds_commands_and_requires_explicit_invoke(tmp_path: Path) -> None:
+    store = SQLiteStateStore(tmp_path / "state.db")
+    run = store.create_run(goal="ship peer executor", workspace=str(tmp_path))
+    task = store.save_task(SisyphusTask(run_id=run.id, title="Implement", description="Do work"))
+    payload = build_worker_payload(run, task)
+    invoked: list[tuple[list[str], Path]] = []
+
+    def runner(cmd: list[str], cwd: Path) -> dict[str, object]:
+        invoked.append((cmd, cwd))
+        return {"pid": 1234}
+
+    adapter = PeerExecutorAdapter(runner=runner)
+    dry_run = adapter.dispatch(ExecutorDispatchRequest(payload=payload, executor="opencode"))
+    assert dry_run["command"][0:2] == ["opencode", "run"]
+    assert dry_run["executor_invoked"] is False
+    assert invoked == []
+
+    live = adapter.dispatch(ExecutorDispatchRequest(payload=payload, executor="hermes-profile:worker", invoke=True))
+    assert live["command"][:4] == ["hermes", "--profile", "worker", "chat"]
+    assert live["executor_invoked"] is True
+    assert invoked[0][1] == tmp_path
+
+
+def test_peer_executor_adapter_returns_structured_failure_on_spawn_error(tmp_path: Path) -> None:
+    store = SQLiteStateStore(tmp_path / "state.db")
+    run = store.create_run(goal="ship peer executor failure handling", workspace=str(tmp_path))
+    task = store.save_task(SisyphusTask(run_id=run.id, title="Implement", description="Do work"))
+    payload = build_worker_payload(run, task)
+
+    def runner(_cmd: list[str], _cwd: Path) -> dict[str, object]:
+        raise FileNotFoundError("executor missing")
+
+    result = PeerExecutorAdapter(runner=runner).dispatch(
+        ExecutorDispatchRequest(payload=payload, executor="opencode", invoke=True)
+    )
+
+    assert result["ok"] is False
+    assert result["dispatched"] is False
+    assert result["executor_invoked"] is False
+    assert "FileNotFoundError" in result["error"]
 
 
 def test_command_dispatch_task_queues_executor_outbox_and_audit(tmp_path: Path) -> None:

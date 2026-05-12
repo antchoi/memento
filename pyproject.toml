@@ -21,6 +21,9 @@ dev = [
 [project.scripts]
 sisyphus-hermes = "sisyphus_hermes.cli:main"
 
+[project.entry-points."hermes_agent.plugins"]
+sisyphus-hermes = "sisyphus_hermes.plugin"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/sisyphus_hermes"]
 
