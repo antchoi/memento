@@ -1,1 +1,1 @@
-"""Test package for sisyphus-hermes."""
+"""Test package for memento."""

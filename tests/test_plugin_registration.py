@@ -16,47 +16,47 @@ class FakeHermesContext:
 
 
 def test_plugin_import_has_runtime_light_register_entrypoint():
-    plugin = importlib.import_module("sisyphus_hermes.plugin")
+    plugin = importlib.import_module("memento.plugin")
 
     assert callable(plugin.register)
 
 
 def test_register_adds_full_command_surface_with_metadata_and_structured_result(tmp_path):
-    from sisyphus_hermes import plugin
+    from memento import plugin
 
     ctx = FakeHermesContext()
 
     result = plugin.register(ctx)
 
     expected = {
-        "sisyphus.init",
-        "sisyphus.start",
-        "sisyphus.plan",
-        "sisyphus.approve-plan",
-        "sisyphus.status",
-        "sisyphus.pause",
-        "sisyphus.resume",
-        "sisyphus.cancel",
-        "sisyphus.review",
-        "sisyphus.report",
-        "sisyphus.doctor",
-        "sisyphus.sample-smoke",
-        "sisyphus.enqueue-event",
-        "sisyphus.worker-payload",
-        "sisyphus.dispatch-task",
-        "sisyphus.list-dispatches",
-        "sisyphus.claim-dispatch",
-        "sisyphus.complete-dispatch",
-        "sisyphus.fail-dispatch",
+        "memento.init",
+        "memento.start",
+        "memento.plan",
+        "memento.approve-plan",
+        "memento.status",
+        "memento.pause",
+        "memento.resume",
+        "memento.cancel",
+        "memento.review",
+        "memento.report",
+        "memento.doctor",
+        "memento.sample-smoke",
+        "memento.enqueue-event",
+        "memento.worker-payload",
+        "memento.dispatch-task",
+        "memento.list-dispatches",
+        "memento.claim-dispatch",
+        "memento.complete-dispatch",
+        "memento.fail-dispatch",
     }
     assert result["ok"] is True
-    assert result["plugin"] == "sisyphus-hermes"
+    assert result["plugin"] == "memento"
     assert result["registered"] is True
     assert set(result["commands"]) == expected
     assert set(ctx.commands) == expected
 
-    handler, metadata = ctx.commands["sisyphus.doctor"]
-    assert metadata["description"] == "Run sisyphus-hermes doctor."
+    handler, metadata = ctx.commands["memento.doctor"]
+    assert metadata["description"] == "Run memento doctor."
     assert metadata["args_hint"] == "JSON object or key=value args"
 
     command_result = handler({"workspace": str(tmp_path)})
@@ -73,25 +73,25 @@ def test_register_adds_full_command_surface_with_metadata_and_structured_result(
 def test_pyproject_exposes_hermes_entrypoint_for_real_plugin_discovery():
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     assert pyproject["project"]["entry-points"]["hermes_agent.plugins"] == {
-        "sisyphus-hermes": "sisyphus_hermes.plugin"
+        "memento": "memento.plugin"
     }
 
 
 def test_register_handles_context_without_registrar():
-    from sisyphus_hermes import plugin
+    from memento import plugin
 
     result = plugin.register(object())
 
     assert result == {
         "ok": True,
-        "plugin": "sisyphus-hermes",
+        "plugin": "memento",
         "registered": False,
         "commands": [],
     }
 
 
 def test_register_does_not_retry_internal_registrar_type_error():
-    from sisyphus_hermes import plugin
+    from memento import plugin
 
     class BrokenContext:
         def __init__(self) -> None:

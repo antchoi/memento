@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sisyphus_hermes.domain import SisyphusTask
-from sisyphus_hermes.reporting import render_report, render_status
-from sisyphus_hermes.safety import (
+from memento.domain import SisyphusTask
+from memento.reporting import render_report, render_status
+from memento.safety import (
     classify_git_operation,
     render_worker_safety_constraints,
     run_git_preflight,
 )
-from sisyphus_hermes.commands import CommandService
-from sisyphus_hermes.state import SQLiteStateStore
+from memento.commands import CommandService
+from memento.state import SQLiteStateStore
 
 
 def test_destructive_git_operations_blocked_by_default() -> None:

@@ -3,10 +3,10 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from sisyphus_hermes.commands import CommandService
+from memento.commands import CommandService
 
 ROOT = Path(__file__).resolve().parents[1]
-CORE_SOURCE = ROOT / "src" / "sisyphus_hermes"
+CORE_SOURCE = ROOT / "src" / "memento"
 
 
 def _import_roots(path: Path) -> set[str]:
@@ -70,11 +70,11 @@ def test_ac17_development_commands_document_lint_type_and_test_baseline() -> Non
 
 def test_ac18_readme_maps_every_seed_acceptance_criterion() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    seed = (ROOT / ".ouroboros" / "seeds" / "sisyphus-hermes.seed.yaml").read_text(
+    seed = (ROOT / ".ouroboros" / "seeds" / "memento.seed.yaml").read_text(
         encoding="utf-8"
     )
 
-    assert ".ouroboros/seeds/sisyphus-hermes.seed.yaml" in readme
+    assert ".ouroboros/seeds/memento.seed.yaml" in readme
     for index in range(1, 23):
         token = f"AC{index:02d}_"
         assert token in seed

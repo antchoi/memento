@@ -1,4 +1,4 @@
-"""Practical Kanban adapter implementations for sisyphus-hermes.
+"""Practical Kanban adapter implementations for memento.
 
 Adapters in this module keep Sisyphus task state durable while allowing a live
 Hermes Kanban board to mirror task cards when it is available.  The JSON adapter
@@ -110,7 +110,7 @@ class HermesKanbanCliAdapter:
         *,
         board: str | None = None,
         hermes_command: str = "hermes",
-        tenant: str = "sisyphus-hermes",
+        tenant: str = "memento",
         assignee: str | None = None,
         workspace: str | None = None,
         runner: Runner | None = None,
@@ -152,7 +152,7 @@ class HermesKanbanCliAdapter:
             "--tenant",
             self.tenant,
             "--idempotency-key",
-            f"sisyphus-hermes:{task.id}",
+            f"memento:{task.id}",
             "--json",
         ]
         if self.assignee:
@@ -169,9 +169,9 @@ class HermesKanbanCliAdapter:
 
     def _set_terminal_status(self, card_id: str, status: TaskStatus) -> None:
         if status == TaskStatus.BLOCKED:
-            self._run(["kanban", "block", card_id, "Mirrored from sisyphus-hermes"])
+            self._run(["kanban", "block", card_id, "Mirrored from memento"])
         elif status == TaskStatus.COMPLETED:
-            self._run(["kanban", "complete", card_id, "--summary", "Mirrored from sisyphus-hermes"])
+            self._run(["kanban", "complete", card_id, "--summary", "Mirrored from memento"])
         elif status == TaskStatus.CANCELLED:
             self._run(["kanban", "archive", card_id])
 

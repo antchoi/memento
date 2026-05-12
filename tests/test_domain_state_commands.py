@@ -3,8 +3,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from sisyphus_hermes.commands import CommandService, command_names
-from sisyphus_hermes.domain import (
+from memento.commands import CommandService, command_names
+from memento.domain import (
     AuditEvent,
     Evidence,
     GateKind,
@@ -16,7 +16,7 @@ from sisyphus_hermes.domain import (
     SisyphusRun,
     SisyphusTask,
 )
-from sisyphus_hermes.state import SQLiteStateStore
+from memento.state import SQLiteStateStore
 
 
 def test_domain_models_round_trip_to_dict() -> None:
@@ -35,7 +35,7 @@ def test_domain_models_round_trip_to_dict() -> None:
 
 
 def test_sqlite_store_persists_all_entities_across_reopen(tmp_path: Path) -> None:
-    db_path = tmp_path / "sisyphus.sqlite3"
+    db_path = tmp_path / "memento.sqlite3"
     store = SQLiteStateStore(db_path)
     run = store.create_run(goal="finish MVP", workspace=str(tmp_path))
     plan = store.save_plan(SisyphusPlan(run_id=run.id, title="Draft", body="1. test"))

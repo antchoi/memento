@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from sisyphus_hermes.commands import CommandService
+from memento.commands import CommandService
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -25,9 +25,9 @@ def test_doctor_reports_real_local_install_and_plugin_readiness(tmp_path: Path) 
     assert checks["bundled_skills"] == "ok"
     assert checks["bundled_skill_count"] >= 3
     assert checks["bundled_skill_frontmatter_offenders"] == {}
-    assert result["local_install"]["module"] == "sisyphus_hermes"
-    assert result["local_install"]["console_script"] == "sisyphus-hermes"
-    assert "sisyphus.doctor" in result["plugin_registration"]["commands"]
+    assert result["local_install"]["module"] == "memento"
+    assert result["local_install"]["console_script"] == "memento"
+    assert "memento.doctor" in result["plugin_registration"]["commands"]
     assert result["runtime_paths"]["state"].endswith(".sisyphus/state.sqlite3")
     assert result["runtime_paths"]["executor_outbox"].endswith(".sisyphus/executor-outbox.jsonl")
 
@@ -38,7 +38,7 @@ def test_module_cli_doctor_and_sample_smoke_work_from_checkout(tmp_path: Path) -
         [
             sys.executable,
             "-m",
-            "sisyphus_hermes.cli",
+            "memento.cli",
             "doctor",
             "--workspace",
             str(tmp_path / "doctor"),
@@ -59,7 +59,7 @@ def test_module_cli_doctor_and_sample_smoke_work_from_checkout(tmp_path: Path) -
         [
             sys.executable,
             "-m",
-            "sisyphus_hermes.cli",
+            "memento.cli",
             "sample-smoke",
             "--workspace",
             str(tmp_path / "sample"),
@@ -83,5 +83,5 @@ def test_local_verification_script_documents_release_candidate_smoke() -> None:
     assert "python -m pytest -q" in script
     assert "python -m ruff check ." in script
     assert "python -m compileall -q src tests" in script
-    assert "python -m sisyphus_hermes.cli doctor --json" in script
-    assert "python -m sisyphus_hermes.cli sample-smoke --workspace" in script
+    assert "python -m memento.cli doctor --json" in script
+    assert "python -m memento.cli sample-smoke --workspace" in script

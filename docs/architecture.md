@@ -1,13 +1,13 @@
-# sisyphus-hermes Architecture
+# memento Architecture
 
-`sisyphus-hermes` is a Hermes-native lifecycle plugin inspired by Sisyphus/Ultraworker workflows. It deliberately avoids treating OpenCode/Codex/Claude Code process logs or TUIs as the core source of truth. Those tools can later be optional executor peers; the plugin state model remains Hermes-owned.
+`memento` is a Hermes-native lifecycle plugin inspired by Sisyphus/Ultraworker workflows. It deliberately avoids treating OpenCode/Codex/Claude Code process logs or TUIs as the core source of truth. Those tools can later be optional executor peers; the plugin state model remains Hermes-owned.
 
 ## Runtime boundary
 
-- `sisyphus_hermes.plugin.register(ctx)` is runtime-light and safe to import without Hermes gateway, Kanban, or optional executor packages.
-- Local Hermes registration loads `sisyphus_hermes.plugin:register`; a Hermes-like context only needs `register_command(name, handler, **metadata)`, and the fake-context tests are the executable registration contract.
+- `memento.plugin.register(ctx)` is runtime-light and safe to import without Hermes gateway, Kanban, or optional executor packages.
+- Local Hermes registration loads `memento.plugin:register`; a Hermes-like context only needs `register_command(name, handler, **metadata)`, and the fake-context tests are the executable registration contract.
 - `doctor` mechanically checks package import readiness, console-script metadata, `plugin.register(ctx)` smoke output, bundled skill frontmatter, workspace `.sisyphus/` writability, runtime `.gitignore` coverage, and the OpenCode/oh-my-openagent import independence scan.
-- The initial command surface is registered as `sisyphus.*` commands:
+- The initial command surface is registered as `memento.*` commands:
   - `init`
   - `start`
   - `plan`
@@ -57,7 +57,7 @@ recovered without relying on hidden chat history or an external TUI:
 
 ## Durable lifecycle model
 
-The domain model is defined in `src/sisyphus_hermes/domain.py`:
+The domain model is defined in `src/memento/domain.py`:
 
 - `SisyphusRun`: top-level run with goal, workspace, status, actor, source-of-truth metadata, and current canonical plan id.
 - `SisyphusPlan`: draft/canonical/superseded plan documents with assumptions, risks, and acceptance criteria.
@@ -74,11 +74,11 @@ The intended production order is:
 2. SQLite fallback for local durability, import smoke tests, and recovery.
 
 The current implementation provides a fake-testable Kanban boundary plus the
-SQLite fallback contract in `src/sisyphus_hermes/state.py`:
+SQLite fallback contract in `src/memento/state.py`:
 
 - `KanbanAdapter` defines the minimal task persistence/listing protocol for a
   future Hermes Kanban implementation;
-- `JsonKanbanAdapter` in `src/sisyphus_hermes/kanban.py` provides a practical
+- `JsonKanbanAdapter` in `src/memento/kanban.py` provides a practical
   dependency-free board at `.sisyphus/kanban.json` for local collaboration,
   smoke testing, and adapter contract development;
 - `UnavailableKanbanAdapter` makes fallback behavior explicit when no live
@@ -100,7 +100,7 @@ The current command implementation blocks normal execution (`start` against an e
 
 ## Safety and reporting
 
-`src/sisyphus_hermes/safety.py` provides git preflight and destructive-operation classification primitives:
+`src/memento/safety.py` provides git preflight and destructive-operation classification primitives:
 
 - dirty worktree detection;
 - detached HEAD detection;
@@ -109,17 +109,17 @@ The current command implementation blocks normal execution (`start` against an e
 - untracked file detection;
 - guardrails for `git reset --hard`, `git clean`, force push, direct protected-branch push, and merge commands.
 
-`src/sisyphus_hermes/reporting.py` emits Telegram-friendly Markdown without tables so reports remain readable in chat channels.
+`src/memento/reporting.py` emits Telegram-friendly Markdown without tables so reports remain readable in chat channels.
 
 ## Worker dispatch boundary
 
-`src/sisyphus_hermes/workers.py` builds explicit `WorkerPayload` records for
+`src/memento/workers.py` builds explicit `WorkerPayload` records for
 future Hermes profile, delegate_task, or external executor adapters. Payloads
 include repo path, goal, task description, acceptance criteria, safety
 constraints, and a reporting contract. They intentionally state that workers
 must not rely on parent chat history or OpenCode/TUI state.
 
-`src/sisyphus_hermes/executors/` contains the optional executor peer boundary.
+`src/memento/executors/` contains the optional executor peer boundary.
 The MVP ships `NoopExecutorAdapter`, which returns `dispatched=False` and
 `executor_invoked=False` even when the requested peer is named `opencode`,
 `codex`, or `claude-code`. It also ships `OutboxExecutorAdapter`, which writes a
@@ -133,7 +133,7 @@ external logs.
 
 ## Cron/event boundary
 
-`src/sisyphus_hermes/events.py` converts cron/webhook payloads into durable
+`src/memento/events.py` converts cron/webhook payloads into durable
 `SisyphusTask` records and append-only audit events. Event ingestion returns
 `dispatched=False` and `executor_invoked=False`; implementation work must be
 started by an explicit lifecycle/worker action after safety and review checks.

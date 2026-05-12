@@ -6,13 +6,13 @@ import argparse
 import json
 from pathlib import Path
 
-from sisyphus_hermes import __version__
-from sisyphus_hermes.commands import CommandService, command_names
-from sisyphus_hermes.reporting import render_report, render_status
+from memento import __version__
+from memento.commands import CommandService, command_names
+from memento.reporting import render_report, render_status
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="sisyphus-hermes")
+    parser = argparse.ArgumentParser(prog="memento")
     parser.add_argument("command", nargs="?", default="doctor", choices=command_names())
     parser.add_argument("--json", action="store_true", help="Emit machine-readable output.")
     parser.add_argument("--workspace", default=str(Path.cwd()), help="Repository/workspace path.")
@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     payload = {k: v for k, v in payload.items() if v not in (None, False)}
     result = CommandService().handler_for(args.command)(payload)
-    result.setdefault("package", "sisyphus-hermes")
+    result.setdefault("package", "memento")
     result.setdefault("version", __version__)
 
     if args.json:
@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
         print(result.get("text") or render_report(result))
     else:
         status = "ok" if result.get("ok") else f"error: {result.get('error', 'unknown')}"
-        print(f"sisyphus-hermes {__version__}: {args.command} {status}")
+        print(f"memento {__version__}: {args.command} {status}")
     return 0 if result.get("ok") else 1
 
 

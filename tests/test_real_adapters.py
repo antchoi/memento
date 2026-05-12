@@ -3,16 +3,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from sisyphus_hermes.commands import CommandService
-from sisyphus_hermes.domain import SisyphusTask, TaskStatus
-from sisyphus_hermes.executors import (
+from memento.commands import CommandService
+from memento.domain import SisyphusTask, TaskStatus
+from memento.executors import (
     ExecutorDispatchRequest,
     OutboxExecutorAdapter,
     PeerExecutorAdapter,
 )
-from sisyphus_hermes.kanban import HermesKanbanCliAdapter, JsonKanbanAdapter
-from sisyphus_hermes.state import SQLiteStateStore
-from sisyphus_hermes.workers import build_worker_payload
+from memento.kanban import HermesKanbanCliAdapter, JsonKanbanAdapter
+from memento.state import SQLiteStateStore
+from memento.workers import build_worker_payload
 
 
 def test_json_kanban_adapter_persists_cards_across_store_restarts(tmp_path: Path) -> None:
@@ -80,7 +80,7 @@ def test_hermes_kanban_cli_adapter_uses_public_json_cli_contract(tmp_path: Path)
             ),
         }
 
-    adapter = HermesKanbanCliAdapter(board="sisyphus", tenant="sisyphus-hermes", runner=runner)
+    adapter = HermesKanbanCliAdapter(board="sisyphus", tenant="memento", runner=runner)
 
     saved = adapter.create_or_update_task(task)
     listed = adapter.list_tasks("run_123")
@@ -89,8 +89,8 @@ def test_hermes_kanban_cli_adapter_uses_public_json_cli_contract(tmp_path: Path)
     assert listed == [task]
     assert calls[0][:4] == ["hermes", "kanban", "--board", "sisyphus"]
     assert "--idempotency-key" in calls[0]
-    assert f"sisyphus-hermes:{task.id}" in calls[0]
-    assert calls[1] == ["hermes", "kanban", "--board", "sisyphus", "list", "--tenant", "sisyphus-hermes", "--json"]
+    assert f"memento:{task.id}" in calls[0]
+    assert calls[1] == ["hermes", "kanban", "--board", "sisyphus", "list", "--tenant", "memento", "--json"]
 
 
 def test_hermes_kanban_cli_adapter_reports_subprocess_failures() -> None:

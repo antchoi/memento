@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from sisyphus_hermes.commands import CommandService, command_names
-from sisyphus_hermes.state import SQLiteStateStore
+from memento.commands import CommandService, command_names
+from memento.state import SQLiteStateStore
 
 
 def _queued_dispatch(tmp_path: Path) -> tuple[CommandService, dict, dict, dict, Path]:

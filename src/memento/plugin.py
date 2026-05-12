@@ -2,7 +2,7 @@
 
 This module is intentionally runtime-light: importing it must not require a live
 Hermes runtime, Kanban database, gateway process, or optional executor package.
-Concrete command implementations live in :mod:`sisyphus_hermes.commands` and
+Concrete command implementations live in :mod:`memento.commands` and
 remain fake-context-testable.
 """
 
@@ -16,8 +16,8 @@ from typing import Any
 
 from .commands import CommandService, command_names
 
-PLUGIN_NAME = "sisyphus-hermes"
-DOCTOR_COMMAND = "sisyphus.doctor"
+PLUGIN_NAME = "memento"
+DOCTOR_COMMAND = "memento.doctor"
 
 
 def _coerce_args(args: Any) -> dict[str, Any]:
@@ -113,13 +113,13 @@ def register(ctx: Any) -> dict[str, Any]:
     registrar = getattr(ctx, "register_command", None)
     if callable(registrar):
         for command_name in command_names():
-            full_name = f"sisyphus.{command_name}"
+            full_name = f"memento.{command_name}"
             handler = _doctor_handler if command_name == "doctor" else _handler_for(command_name)
             _register_command(
                 registrar,
                 full_name,
                 handler,
-                description=f"Run sisyphus-hermes {command_name}.",
+                description=f"Run memento {command_name}.",
                 args_hint="JSON object or key=value args",
             )
             commands.append(full_name)

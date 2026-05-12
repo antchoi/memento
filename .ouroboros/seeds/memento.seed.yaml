@@ -1,9 +1,9 @@
 metadata:
-  seed_id: sisyphus-hermes-plugin-v0
+  seed_id: memento-plugin-v0
   title: Hermes-native Sisyphus full plugin
   version: 0.1.0
   created_at: '2026-05-10T23:04:07Z'
-  project_dir: /Users/yhchoi/workspace/sisyphus-hermes
+  project_dir: /Users/yhchoi/workspace/memento
   source: hermes-assisted-ouroboros-auto-repair
   ouroboros_auto_session_id: auto_c9ed3d5af099
   ouroboros_interview_session_ids:
@@ -12,7 +12,7 @@ metadata:
   - interview_b7911404d0e343e6
   ambiguity_score: 0.15
   status: seed_ready_for_ouroboros_execution
-goal: Build a production-oriented Hermes Agent plugin named sisyphus-hermes that ports the useful workflow ideas of oh-my-openagent's Sisyphus/Ultraworker into a Hermes-native architecture. The plugin must treat Sisyphus as a disciplined, durable long-horizon task lifecycle rather than as an OpenCode watcher or a single opaque long-running prompt. It must provide user-facing commands and internal services for planning, starting, monitoring, reviewing, pausing, cancelling, resuming, and reporting coding work through Hermes primitives.
+goal: Build a production-oriented Hermes Agent plugin named memento that ports the useful workflow ideas of oh-my-openagent's Sisyphus/Ultraworker into a Hermes-native architecture. The plugin must treat Sisyphus as a disciplined, durable long-horizon task lifecycle rather than as an OpenCode watcher or a single opaque long-running prompt. It must provide user-facing commands and internal services for planning, starting, monitoring, reviewing, pausing, cancelling, resuming, and reporting coding work through Hermes primitives.
 problem_statement: The current Hermes + OpenCode + oh-my-openagent/Sisyphus integration is brittle because Hermes can only observe OpenCode indirectly through logs, process state, and database artifacts. Agent naming, plugin loading, and TUI state can drift, causing false progress reports and failed delegation. A Hermes-native Sisyphus plugin should eliminate this mismatch by making Hermes' own Kanban board, profiles, skills, memory/session search, cron/event watchers, subagents, and terminal/file tools the source of truth.
 actors:
 - name: founder_user
@@ -51,7 +51,7 @@ outputs:
 - automated_tests_and_user_developer_documentation
 runtime_context:
   project_type: greenfield_standalone_plugin
-  project_dir: /Users/yhchoi/workspace/sisyphus-hermes
+  project_dir: /Users/yhchoi/workspace/memento
   host_environment: Local Hermes Agent installation on macOS.
   source_of_truth: Hermes Kanban when available; project-local SQLite fallback only when Kanban is unavailable.
   core_primitives: Hermes plugin APIs, profiles, skills, Kanban, cron/event watchers, delegation/subagents, terminal/file/process tools, and messaging/reporting channels.
@@ -79,7 +79,7 @@ non_goals:
 - Treat OpenCode/Codex/Claude Code logs, TUI state, or process output as the Sisyphus lifecycle source of truth.
 mvp_scope:
   required:
-  - Standalone Hermes plugin repository at /Users/yhchoi/workspace/sisyphus-hermes.
+  - Standalone Hermes plugin repository at /Users/yhchoi/workspace/memento.
   - Command handlers for init, start, plan, approve-plan, status, pause, resume, cancel, review, report, and doctor.
   - Observable role behavior for Metis, Momus, Sisyphus, Hephaestus, and Hermes-Sheriff through persisted decisions/actions and report output.
   - Kanban-backed durable lifecycle with SQLite fallback.
@@ -92,7 +92,7 @@ mvp_scope:
   - Remote/cloud synchronization of lifecycle state.
   - Production deployment packaging beyond local install/developer setup.
 constraints:
-- 'environment: Development target is macOS with project root /Users/yhchoi/workspace/sisyphus-hermes.'
+- 'environment: Development target is macOS with project root /Users/yhchoi/workspace/memento.'
 - 'environment: Plugin must be usable from a local Hermes install and must not require modifying Hermes core for the MVP unless a documented extension point is missing.'
 - 'environment: Generated runtime state must stay under project-local or Hermes-approved state directories and be gitignored when not source.'
 - 'architecture: Design for full Hermes plugin architecture from the outset.'
@@ -170,21 +170,21 @@ functional_requirements:
 deliverables:
 - path: pyproject.toml
   description: Python package/plugin metadata, dev dependencies, test commands.
-- path: src/sisyphus_hermes/
+- path: src/memento/
   description: Plugin source package.
-- path: src/sisyphus_hermes/plugin.py
+- path: src/memento/plugin.py
   description: Hermes plugin registration and command wiring.
-- path: src/sisyphus_hermes/domain.py
+- path: src/memento/domain.py
   description: Typed domain models for runs, plans, tasks, gates, evidence, and audit events.
-- path: src/sisyphus_hermes/state.py
+- path: src/memento/state.py
   description: Durable state adapter with local fallback and Kanban abstraction boundary.
-- path: src/sisyphus_hermes/commands.py
+- path: src/memento/commands.py
   description: Command handlers for init/start/plan/approve/status/pause/resume/cancel/review/report/doctor.
-- path: src/sisyphus_hermes/safety.py
+- path: src/memento/safety.py
   description: Repository preflight and destructive-operation guardrails.
-- path: src/sisyphus_hermes/reporting.py
+- path: src/memento/reporting.py
   description: Telegram-friendly and JSON status rendering.
-- path: src/sisyphus_hermes/executors/
+- path: src/memento/executors/
   description: Hermes profile/delegate_task executor adapters and optional external executor interface.
 - path: skills/sisyphus-ultraworker/SKILL.md
   description: Bundled skill defining Sisyphus worker discipline.

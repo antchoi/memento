@@ -1,9 +1,9 @@
-# sisyphus-hermes
+# memento
 
 Hermes-native Sisyphus plugin project.
 
 This repository is being implemented from the Ouroboros Seed at
-`.ouroboros/seeds/sisyphus-hermes.seed.yaml`. The goal is to port the useful
+`.ouroboros/seeds/memento.seed.yaml`. The goal is to port the useful
 ideas of oh-my-openagent's Sisyphus/Ultraworker into a Hermes-native full plugin
 architecture: durable task lifecycle, Kanban-backed orchestration, profile-aware
 workers, review gates, and Telegram-friendly status reporting.
@@ -13,12 +13,12 @@ workers, review gates, and Telegram-friendly status reporting.
 AC01 repository bootstrap is represented by:
 
 - `pyproject.toml` — installable Python package metadata and test config.
-- `src/sisyphus_hermes/` — importable package and plugin registration boundary.
+- `src/memento/` — importable package and plugin registration boundary.
 - `tests/` — pytest package with import/file-existence smoke tests.
 - `docs/architecture.md` — initial architecture note.
 - `skills/sisyphus-ultraworker/SKILL.md` — first bundled worker skill.
 - `.gitignore` — excludes Python/runtime/secrets artifacts.
-- `.ouroboros/seeds/sisyphus-hermes.seed.yaml` — source Seed and AC traceability.
+- `.ouroboros/seeds/memento.seed.yaml` — source Seed and AC traceability.
 
 ## Development commands
 
@@ -26,7 +26,7 @@ AC01 repository bootstrap is represented by:
 python -m pytest -q
 python -m ruff check .
 python -m compileall -q src tests
-PYTHONPATH=src python -m sisyphus_hermes.cli doctor --json
+PYTHONPATH=src python -m memento.cli doctor --json
 ```
 
 For normal package use, install the project in editable mode first:
@@ -34,9 +34,9 @@ For normal package use, install the project in editable mode first:
 ```bash
 python -m pip install -e .
 python -m pip install -e '.[dev]'  # optional: test/lint tools
-sisyphus-hermes doctor --json
-sisyphus-hermes sample-smoke --workspace /tmp/sisyphus-hermes-sample --json
-sisyphus-hermes status --workspace /tmp/sisyphus-hermes-sample --json
+memento doctor --json
+memento sample-smoke --workspace /tmp/memento-sample --json
+memento status --workspace /tmp/memento-sample --json
 ```
 
 `sample-smoke` is the mechanical local install/load contract: it initializes a
@@ -60,13 +60,13 @@ independence scan.
 ## Hermes plugin registration path
 
 After `python -m pip install -e .`, configure Hermes to load the local Python
-plugin module `sisyphus_hermes.plugin` and call its `register(ctx)` entry point.
+plugin module `memento.plugin` and call its `register(ctx)` entry point.
 The registration boundary is intentionally runtime-light and registers the
-command namespace as `sisyphus.*`, including `sisyphus.doctor` and
-`sisyphus.sample-smoke`. A minimal Hermes-like context only needs a
+command namespace as `memento.*`, including `memento.doctor` and
+`memento.sample-smoke`. A minimal Hermes-like context only needs a
 `register_command(name, handler, **metadata)` method; the fake-context tests in
 `tests/test_plugin_registration.py` are the executable contract for this path.
-If registration fails, run `sisyphus-hermes doctor --json` and inspect
+If registration fails, run `memento doctor --json` and inspect
 `checks.plugin_register_smoke`, `plugin_registration.commands`, and
 `checks.cli_entrypoint` first.
 ## Acceptance criteria traceability
@@ -74,9 +74,9 @@ If registration fails, run `sisyphus-hermes doctor --json` and inspect
 - AC01_repo_bootstrap: `tests/test_bootstrap.py` verifies required files and
   package import smoke behavior.
 - AC02_plugin_registration: `tests/test_plugin_registration.py` verifies the
-  runtime-light `register(ctx)` entry point and full `sisyphus.*` command
+  runtime-light `register(ctx)` entry point and full `memento.*` command
   registration against a fake Hermes context.
-- AC03_command_surface: `src/sisyphus_hermes/commands.py` exposes `init`,
+- AC03_command_surface: `src/memento/commands.py` exposes `init`,
   `start`, `plan`, `approve-plan`, `status`, `pause`, `resume`, `cancel`,
   `review`, `report`, `doctor`, `sample-smoke`, `enqueue-event`,
   `worker-payload`, `dispatch-task`, `list-dispatches`, `claim-dispatch`,
@@ -118,7 +118,7 @@ If registration fails, run `sisyphus-hermes doctor --json` and inspect
 - AC17_lint_type_baseline: development commands document and verify the current
   `pytest`, `ruff`, and `compileall` baseline.
 - AC18_seed_traceability: this README links the source Seed at
-  `.ouroboros/seeds/sisyphus-hermes.seed.yaml` and maps every Seed acceptance
+  `.ouroboros/seeds/memento.seed.yaml` and maps every Seed acceptance
   criterion to code, docs, or test evidence.
 - AC19_actor_input_output_runtime_closure: `docs/architecture.md` and command
   result schemas model the Seed actors, accepted inputs, produced outputs,

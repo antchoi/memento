@@ -1,4 +1,4 @@
-# sisyphus-hermes User Guide
+# memento User Guide
 
 ## Install for local development
 
@@ -8,9 +8,9 @@ python -m pip install -e '.[dev]'  # optional: test/lint tools
 python -m pytest -q
 python -m ruff check .
 python -m compileall -q src tests
-sisyphus-hermes doctor --json
-sisyphus-hermes sample-smoke --workspace /tmp/sisyphus-hermes-sample --json
-sisyphus-hermes status --workspace /tmp/sisyphus-hermes-sample --json
+memento doctor --json
+memento sample-smoke --workspace /tmp/memento-sample --json
+memento status --workspace /tmp/memento-sample --json
 ```
 
 `sample-smoke` is the recommended post-install smoke check. It initializes the
@@ -20,8 +20,8 @@ and checks `status`/`report` against durable SQLite state.
 The plugin can also be exercised without installation by using the source path:
 
 ```bash
-PYTHONPATH=src python -m sisyphus_hermes.cli doctor --json
-PYTHONPATH=src python -m sisyphus_hermes.cli sample-smoke --workspace /tmp/sisyphus-hermes-sample --json
+PYTHONPATH=src python -m memento.cli doctor --json
+PYTHONPATH=src python -m memento.cli sample-smoke --workspace /tmp/memento-sample --json
 ```
 
 For the full local release-candidate check, run:
@@ -32,21 +32,21 @@ scripts/verify-local.sh
 
 ## Hermes plugin registration
 
-The local Hermes plugin entry point is `sisyphus_hermes.plugin:register`. After
+The local Hermes plugin entry point is `memento.plugin:register`. After
 editable installation, configure Hermes to load that module and call
 `register(ctx)`. The context is expected to expose
 `register_command(name, handler, **metadata)`. Registration creates the
-`sisyphus.*` command namespace and returns structured metadata listing the
+`memento.*` command namespace and returns structured metadata listing the
 registered commands.
 
 Smoke/debug sequence:
 
 ```bash
-sisyphus-hermes doctor --json
-sisyphus-hermes sample-smoke --workspace /tmp/sisyphus-hermes-sample --json
+memento doctor --json
+memento sample-smoke --workspace /tmp/memento-sample --json
 ```
 
-`doctor` checks package import readiness, the `sisyphus-hermes` console script
+`doctor` checks package import readiness, the `memento` console script
 metadata, `plugin.register(ctx)` against a fake Hermes context, bundled skill
 frontmatter, workspace `.sisyphus/` writability, generated runtime state
 `.gitignore` coverage, local SQLite readiness, and OpenCode/oh-my-openagent
@@ -73,21 +73,21 @@ import independence. Runtime artifacts are project-local:
 ## Command examples
 
 ```bash
-sisyphus-hermes init --workspace /path/to/repo
-sisyphus-hermes start --workspace /path/to/repo --goal "Ship the plugin MVP"
-sisyphus-hermes plan --run-id run_... --title "MVP plan" --body "..."
-sisyphus-hermes approve-plan --run-id run_... --plan-id plan_...
-sisyphus-hermes status --run-id run_...
-sisyphus-hermes worker-payload --run-id run_... --task-id task_... --json
-sisyphus-hermes dispatch-task --run-id run_... --task-id task_... --executor hermes-profile --json
-sisyphus-hermes list-dispatches --run-id run_... --json
-sisyphus-hermes claim-dispatch --dispatch-id dispatch_... --executor hermes-profile --json
-sisyphus-hermes complete-dispatch --dispatch-id dispatch_... --summary "done" --evidence-uri file://artifact --json
-sisyphus-hermes fail-dispatch --dispatch-id dispatch_... --reason "tests failed" --json
-sisyphus-hermes report --run-id run_...
-sisyphus-hermes pause --run-id run_... --reason "waiting for review"
-sisyphus-hermes resume --run-id run_...
-sisyphus-hermes cancel --run-id run_... --reason "user cancelled"
+memento init --workspace /path/to/repo
+memento start --workspace /path/to/repo --goal "Ship the plugin MVP"
+memento plan --run-id run_... --title "MVP plan" --body "..."
+memento approve-plan --run-id run_... --plan-id plan_...
+memento status --run-id run_...
+memento worker-payload --run-id run_... --task-id task_... --json
+memento dispatch-task --run-id run_... --task-id task_... --executor hermes-profile --json
+memento list-dispatches --run-id run_... --json
+memento claim-dispatch --dispatch-id dispatch_... --executor hermes-profile --json
+memento complete-dispatch --dispatch-id dispatch_... --summary "done" --evidence-uri file://artifact --json
+memento fail-dispatch --dispatch-id dispatch_... --reason "tests failed" --json
+memento report --run-id run_...
+memento pause --run-id run_... --reason "waiting for review"
+memento resume --run-id run_...
+memento cancel --run-id run_... --reason "user cancelled"
 ```
 
 Telegram/slash-command integrations should render the same structured results in
@@ -131,7 +131,7 @@ can decide how to process the queued task after safety and review checks.
 ## Optional executor extension
 
 OpenCode, Codex, Claude Code, or Hermes profile workers can be implemented as
-future executor adapters under `src/sisyphus_hermes/executors/`. They are peer
+future executor adapters under `src/memento/executors/`. They are peer
 executors, not the lifecycle source of truth. The MVP `NoopExecutorAdapter`
 intentionally returns `dispatched=false` / `executor_invoked=false` so a queued
 worker payload cannot be mistaken for executed implementation work. The

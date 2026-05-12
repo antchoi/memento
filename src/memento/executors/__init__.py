@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
-from sisyphus_hermes.domain import utc_now
-from sisyphus_hermes.workers import WorkerPayload
+from memento.domain import utc_now
+from memento.workers import WorkerPayload
 
 ProcessRunner = Callable[[Sequence[str], Path], dict[str, Any]]
 
@@ -245,7 +245,7 @@ class PeerExecutorAdapter:
     def _prompt_for(self, payload: WorkerPayload) -> str:
         record = payload.to_record()
         return (
-            "Execute this sisyphus-hermes worker payload. "
+            "Execute this memento worker payload. "
             "Respect safety_constraints, do not use destructive git operations, "
             "and report evidence before marking complete.\n"
             f"```json\n{json.dumps(record, sort_keys=True, indent=2)}\n```"

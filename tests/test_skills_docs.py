@@ -40,7 +40,7 @@ def test_documentation_covers_install_commands_safety_recovery_and_executor_exte
 
     for phrase in (
         "python -m pip install -e",
-        "sisyphus-hermes doctor --json",
+        "memento doctor --json",
         ".sisyphus/state.sqlite3",
         "Cron/webhook integrations may enqueue durable tasks only",
         "Optional executor extension",

@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "sisyphus-hermes"
+name = "memento"
 version = "0.1.0"
 description = "Hermes-native Sisyphus durable task lifecycle plugin."
 readme = "README.md"
@@ -19,13 +19,13 @@ dev = [
 ]
 
 [project.scripts]
-sisyphus-hermes = "sisyphus_hermes.cli:main"
+memento = "memento.cli:main"
 
 [project.entry-points."hermes_agent.plugins"]
-sisyphus-hermes = "sisyphus_hermes.plugin"
+memento = "memento.plugin"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/sisyphus_hermes"]
+packages = ["src/memento"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

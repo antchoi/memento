@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sisyphus_hermes.commands import CommandService
-from sisyphus_hermes.domain import SisyphusTask
-from sisyphus_hermes.state import SQLiteStateStore
-from sisyphus_hermes.workers import build_worker_payload
-from sisyphus_hermes.executors import NoopExecutorAdapter, ExecutorDispatchRequest
+from memento.commands import CommandService
+from memento.domain import SisyphusTask
+from memento.state import SQLiteStateStore
+from memento.workers import build_worker_payload
+from memento.executors import NoopExecutorAdapter, ExecutorDispatchRequest
 
 
 class FakeKanbanAdapter:

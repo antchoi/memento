@@ -35,7 +35,7 @@ class WorkerPayload:
     safety_constraints: str = field(default_factory=render_worker_safety_constraints)
     reporting_contract: str = REPORTING_CONTRACT
     hidden_context_policy: str = "Do not rely on parent chat history or TUI state."
-    source_of_truth: str = "sisyphus-hermes durable state"
+    source_of_truth: str = "memento durable state"
 
     def to_record(self) -> dict[str, Any]:
         record = asdict(self)

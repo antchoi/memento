@@ -1,4 +1,4 @@
-"""Command handlers for the sisyphus-hermes plugin and developer CLI."""
+"""Command handlers for the memento plugin and developer CLI."""
 
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ def _project_root() -> Path:
 
 def _package_import_check() -> dict[str, Any]:
     try:
-        module = importlib.import_module("sisyphus_hermes")
+        module = importlib.import_module("memento")
     except Exception as exc:  # pragma: no cover - defensive diagnostic path
         return {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
     return {
@@ -95,12 +95,12 @@ def _cli_entrypoint_check() -> dict[str, Any]:
     pyproject_path = _project_root() / "pyproject.toml"
     try:
         pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-        target = pyproject["project"]["scripts"]["sisyphus-hermes"]
+        target = pyproject["project"]["scripts"]["memento"]
     except Exception as exc:  # pragma: no cover - defensive diagnostic path
         return {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
     return {
-        "status": "ok" if target == "sisyphus_hermes.cli:main" else "blocked",
-        "console_script": "sisyphus-hermes",
+        "status": "ok" if target == "memento.cli:main" else "blocked",
+        "console_script": "memento",
         "target": target,
     }
 
@@ -109,13 +109,13 @@ def _hermes_plugin_entrypoint_check() -> dict[str, Any]:
     pyproject_path = _project_root() / "pyproject.toml"
     try:
         pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-        target = pyproject["project"]["entry-points"]["hermes_agent.plugins"]["sisyphus-hermes"]
+        target = pyproject["project"]["entry-points"]["hermes_agent.plugins"]["memento"]
     except Exception as exc:  # pragma: no cover - defensive diagnostic path
         return {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
     return {
-        "status": "ok" if target == "sisyphus_hermes.plugin" else "blocked",
+        "status": "ok" if target == "memento.plugin" else "blocked",
         "entrypoint_group": "hermes_agent.plugins",
-        "name": "sisyphus-hermes",
+        "name": "memento",
         "target": target,
     }
 
@@ -130,14 +130,14 @@ class _DoctorHermesContext:
 
 def _plugin_registration_smoke() -> dict[str, Any]:
     try:
-        plugin = importlib.import_module("sisyphus_hermes.plugin")
+        plugin = importlib.import_module("memento.plugin")
         ctx = _DoctorHermesContext()
         result = plugin.register(ctx)
     except Exception as exc:  # pragma: no cover - defensive diagnostic path
         return {"status": "error", "error": f"{type(exc).__name__}: {exc}", "commands": []}
     commands = sorted(ctx.commands)
     return {
-        "status": "ok" if result.get("ok") and "sisyphus.doctor" in commands else "blocked",
+        "status": "ok" if result.get("ok") and "memento.doctor" in commands else "blocked",
         "registered": bool(result.get("registered")),
         "commands": commands,
     }
@@ -210,7 +210,7 @@ class CommandService:
         if backend == "hermes-cli" or args.get("kanban_board"):
             return HermesKanbanCliAdapter(
                 board=args.get("kanban_board"),
-                tenant=str(args.get("kanban_tenant") or "sisyphus-hermes"),
+                tenant=str(args.get("kanban_tenant") or "memento"),
                 assignee=args.get("kanban_assignee"),
                 workspace=args.get("kanban_workspace"),
             )
@@ -250,7 +250,7 @@ class CommandService:
         return {
             "ok": True,
             "command": "doctor",
-            "plugin": "sisyphus-hermes",
+            "plugin": "memento",
             "workspace": str(workspace),
             "local_install": {
                 "module": package_import.get("module"),
@@ -293,7 +293,7 @@ class CommandService:
         """Run the local install/load smoke path against a sample project."""
 
         workspace = str(args.get("workspace") or Path.cwd())
-        sample_goal = str(args.get("goal") or "Verify sisyphus-hermes local sample project")
+        sample_goal = str(args.get("goal") or "Verify memento local sample project")
         init_result = self.init({"workspace": workspace})
         doctor_result = self.doctor({"workspace": workspace})
         start_result = self.start({"workspace": workspace, "goal": sample_goal})
