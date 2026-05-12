@@ -1,0 +1,134 @@
+metadata:
+  name: memento-v2-learning-graph
+  version: 2.0.0
+  created_at: '2026-05-12T13:59:28Z'
+  origin: hermes-assisted-ouroboros-fallback
+  phase: v2
+  depends_on:
+  - memento-mvp
+  - memento-v1-executor-routing
+  ambiguity_score: 0.16
+  project: memento
+goal: 'Implement v2 learning and graph-aware orchestration: Goose and SWE-agent adapters, confidence-weighted executor
+  performance memory, automatic verification enrichment, graph-derived task decomposition support, partial-work
+  repair workflows, and budget-aware multi-attempt fallback.'
+constraints:
+- Keep Memento as the lifecycle source of truth for runs, sessions, plans, tasks, dispatches, evidence, and verification
+  decisions.
+- Do not depend on executor-native private sessions for correctness, retry, recovery, or progress reporting.
+- Executor summaries, reasoning traces, and self-assessments are advisory and cannot independently satisfy task
+  acceptance.
+- Preserve safety gates for destructive git operations, credentials, production/release actions, and forbidden paths.
+- Apply secret redaction and forbidden-path policies before storing evidence payloads, command output, diffs, or
+  artifacts.
+- Graphify must be checkpoint-driven by default; continuous watch is optional and must not be required for correctness.
+- agentmemory writeback must store only durable reusable lessons, not temporary task progress, raw logs, commit
+  hashes, PR numbers, or raw graph payloads.
+- Goose and SWE-agent adapters must remain capability-gated and may be disabled when healthcheck or sandbox requirements
+  are not met.
+- Executor performance memories must be confidence-weighted, aggregated, and decayed; one-off observations must
+  not dominate routing.
+- Graph-derived task decomposition must be advisory and reviewed against canonical plan/task graph constraints before
+  dispatch.
+- Budget policies must cap attempts, runtime, executor cost, and Graphify deep/semantic updates.
+scope:
+  in:
+  - Goose adapter as experimental OpenCode-like general agent worker with healthcheck and headless/API/process mode
+    detection.
+  - SWE-agent adapter for sandboxed issue repair and test-driven bugfix tasks.
+  - Confidence-weighted executor performance memory with aggregation and decay.
+  - Automatic verification policy enrichment using agentmemory and Graphify signals.
+  - Graph-derived candidate task/dependency suggestions from relevant subgraphs and communities.
+  - Repair-task creation from rejected/partial dispatch evidence.
+  - Budget-aware multi-attempt retry/fallback policies.
+  out:
+  - OpenHands worker pool.
+  - Multi-executor competition/ranking with patch comparison.
+  - Team/CI integration as first-class source of truth.
+  - Fully autonomous graph rewrite of canonical plans without review.
+acceptance_criteria:
+- name: Goose adapter
+  description: Memento can register Goose as an experimental executor, healthcheck it, render context, run/collect
+    when enabled, and mark it unavailable/manual when healthcheck fails.
+  verification: Mocked tests cover available, auth failure, non-headless limitation, timeout, and structured failure
+    result.
+- name: SWE-agent adapter
+  description: Memento can route issue-repair/test-driven-fix tasks to SWE-agent only when sandbox requirements
+    are satisfied.
+  verification: Tests verify sandbox-required routing, issue spec rendering, result collection, and fallback when
+    sandbox unavailable.
+- name: Confidence-weighted executor memory
+  description: Executor performance observations are aggregated by repo, task kind, size, graph impact, and executor;
+    confidence increases with repeated observations and decays over time.
+  verification: Tests show one success is weak signal, repeated successes increase score, recent failures reduce
+    score, and stale data decays.
+- name: Verification enrichment
+  description: Memento automatically strengthens verification policies using memory and graph signals, such as adding
+    smoke tests for affected API/UI contracts or full tests for god-node changes.
+  verification: Tests confirm enrichment adds checks with reasons and never removes or weakens required checks without
+    approval.
+- name: Graph-derived decomposition suggestions
+  description: Memento can use Graphify communities, high-centrality nodes, affected files, and surprising connections
+    to propose task splits/dependencies for review.
+  verification: Given a mocked graph, the planner suggests candidate tasks/dependencies and records them as proposals,
+    not silently accepted canonical tasks.
+- name: Partial-work repair workflow
+  description: Rejected or partially verified dispatches can create repair tasks linked to quarantined diff/evidence
+    and failed requirements.
+  verification: Tests produce a repair task from failing test evidence and ensure downstream tasks remain blocked
+    until repair is accepted.
+- name: Budget-aware fallback
+  description: Routing and retry respect configured budgets for time, attempts, executor count, and Graphify semantic
+    updates.
+  verification: Tests show budget exceeded leads to escalation/blocked state with actionable reasons.
+- name: v2 verification suite
+  description: v2 features pass local tests including mocked Goose/SWE-agent/memory/Graphify scenarios.
+  verification: Run pytest, ruff, compileall, doctor, sample-smoke, and v2 adapter/router tests successfully.
+ontology_schema:
+  name: MementoV2LearningGraph
+  entities:
+  - name: ExecutorPerformanceMemory
+    fields:
+    - executor
+    - repo
+    - task_kind
+    - graph_impact
+    - success_count
+    - failure_count
+    - confidence
+    - decay
+  - name: VerificationEnrichment
+    fields:
+    - added_checks
+    - reasons
+    - source_memory_refs
+    - source_graph_refs
+  - name: GraphTaskProposal
+    fields:
+    - proposed_tasks
+    - dependencies
+    - graph_basis
+    - review_status
+  - name: RepairTask
+    fields:
+    - source_dispatch_id
+    - failed_requirements
+    - quarantined_diff_ref
+    - verification_policy
+evaluation_principles:
+- name: Learning quality without memory pollution
+  weight: 0.25
+- name: Graph-aware orchestration usefulness
+  weight: 0.2
+- name: Adapter safety and capability gating
+  weight: 0.2
+- name: Budget/fallback reliability
+  weight: 0.2
+- name: Recoverability from failures
+  weight: 0.15
+exit_conditions:
+- Goose and SWE-agent adapters are available behind health/capability gates.
+- Performance memory aggregation/decay affects routing in tests.
+- Verification enrichment is explainable and policy-safe.
+- Graph-derived task suggestions are reviewable proposals.
+- Working tree is clean with a verified commit.

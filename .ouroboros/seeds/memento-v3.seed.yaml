@@ -1,0 +1,140 @@
+metadata:
+  name: memento-v3-worker-platform
+  version: 3.0.0
+  created_at: '2026-05-12T13:59:28Z'
+  origin: hermes-assisted-ouroboros-fallback
+  phase: v3
+  depends_on:
+  - memento-mvp
+  - memento-v1-executor-routing
+  - memento-v2-learning-graph
+  ambiguity_score: 0.18
+  project: memento
+goal: 'Implement v3 advanced worker platform capabilities: OpenHands or API-based sandbox worker pool, multi-executor
+  competition, graph-diff architecture regression detection, CI/team integration, and robust long-running orchestration
+  while preserving Memento as the authoritative lifecycle and evidence ledger.'
+constraints:
+- Keep Memento as the lifecycle source of truth for runs, sessions, plans, tasks, dispatches, evidence, and verification
+  decisions.
+- Do not depend on executor-native private sessions for correctness, retry, recovery, or progress reporting.
+- Executor summaries, reasoning traces, and self-assessments are advisory and cannot independently satisfy task
+  acceptance.
+- Preserve safety gates for destructive git operations, credentials, production/release actions, and forbidden paths.
+- Apply secret redaction and forbidden-path policies before storing evidence payloads, command output, diffs, or
+  artifacts.
+- Graphify must be checkpoint-driven by default; continuous watch is optional and must not be required for correctness.
+- agentmemory writeback must store only durable reusable lessons, not temporary task progress, raw logs, commit
+  hashes, PR numbers, or raw graph payloads.
+- Worker pools must expose explicit API/protocol boundaries; Memento must not scrape private TUI/session state for
+  correctness.
+- Multi-executor competition must run in isolated worktrees/sandboxes and merge only independently verified results.
+- CI/team integrations must fetch verification evidence from source APIs where possible, not from executor-provided
+  summaries alone.
+- Graph-diff architecture regression detection must be advisory by default unless explicitly required by policy.
+scope:
+  in:
+  - OpenHands or equivalent API-based sandbox worker adapter/pool behind a stable ExecutorProtocol.
+  - Multi-executor competition where multiple workers attempt the same task in isolated environments and Memento
+    compares verified outcomes.
+  - Patch selection/merge policy using verification evidence, risk scoring, graph impact, and optional user approval.
+  - Graph-diff architecture regression detection for major changes and releases.
+  - CI/GitHub integration for external verification evidence fetched from source APIs.
+  - Team/reporting workflow for approvals, review gates, and release evidence.
+  out:
+  - Replacing Memento with another orchestrator.
+  - Unverified auto-merge of executor patches.
+  - Continuous graphify watch as a correctness dependency.
+  - Storing raw worker transcripts/graph payloads as long-term memory by default.
+acceptance_criteria:
+- name: API-based sandbox worker pool
+  description: Memento can dispatch tasks through an ExecutorProtocol-compatible API/sandbox worker such as OpenHands
+    without relying on private UI/session state.
+  verification: Integration tests or mocked API tests cover submit, poll, cancel, collect, timeout, and failure
+    handling.
+- name: Multi-executor competition
+  description: Memento can run selected tasks through multiple eligible executors in isolated environments and compare
+    verified results before selecting a candidate patch.
+  verification: Tests create two mocked patches with different verification outcomes and select the verified safer
+    patch while preserving both evidence trails.
+- name: Patch selection policy
+  description: Patch selection considers verification pass/fail, test coverage, graph impact, unsafe paths, diff
+    size, user policy, and optional approval gates.
+  verification: A high-risk patch requires approval even if tests pass; a safer fully verified patch is selected
+    automatically when policy allows.
+- name: Graph-diff regression detection
+  description: Memento records graph diffs before/after major changes and flags architecture regressions such as
+    new god nodes, unexpected cross-community edges, or degraded modularity.
+  verification: Mock graph diffs produce warning evidence and strengthened verification/review requirements.
+- name: External CI evidence
+  description: Memento can fetch CI/build/status evidence from source APIs and link it to tasks/runs as trusted
+    external_check evidence.
+  verification: Mock GitHub Actions API result creates external_check evidence and affects release/run completion
+    gates.
+- name: Team approvals and release gates
+  description: User/team approvals are first-class evidence linked to plans, high-risk dispatches, patch selection,
+    and releases.
+  verification: Tests record approval prompt/response/actor/scope and require approval for configured gates.
+- name: Robust long-running orchestration
+  description: Long-running worker jobs can be paused, resumed from canonical state, cancelled, and recovered without
+    depending on native worker memory.
+  verification: Simulated process restart reconstructs pending/running/failed jobs from Memento state and recovers
+    via context bundle regeneration.
+- name: v3 verification suite
+  description: v3 platform capabilities pass unit/integration tests with mocked external systems and local smoke
+    gates.
+  verification: Run pytest, ruff, compileall, doctor, sample-smoke, and v3 worker/competition/CI tests successfully.
+ontology_schema:
+  name: MementoV3WorkerPlatform
+  entities:
+  - name: WorkerPool
+    fields:
+    - id
+    - protocol
+    - health
+    - capacity
+    - sandbox_modes
+    - budget_policy
+  - name: ExecutorCompetition
+    fields:
+    - task_id
+    - candidate_dispatches
+    - selection_policy
+    - selected_dispatch_id
+    - approval_ref
+  - name: GraphDiff
+    fields:
+    - before_checkpoint
+    - after_checkpoint
+    - risk_signals
+    - regression_warnings
+  - name: ExternalCheck
+    fields:
+    - provider
+    - run_id
+    - status
+    - conclusion
+    - url
+    - fetched_at
+  - name: ReleaseGate
+    fields:
+    - required_evidence
+    - required_approvals
+    - ci_checks
+    - graph_requirements
+evaluation_principles:
+- name: Protocol boundaries and correctness
+  weight: 0.25
+- name: Safe multi-worker orchestration
+  weight: 0.25
+- name: Evidence-based CI/release readiness
+  weight: 0.2
+- name: Graph architecture signal quality
+  weight: 0.15
+- name: Operational resilience
+  weight: 0.15
+exit_conditions:
+- API/sandbox worker protocol is implemented or mocked with clear extension points.
+- Multi-executor competition never merges unverified work.
+- CI and approval evidence are linked to release gates.
+- Graph-diff warnings are reportable and policy-aware.
+- Working tree is clean with a verified commit.

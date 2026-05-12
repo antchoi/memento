@@ -1,0 +1,162 @@
+metadata:
+  name: memento-mvp
+  version: 0.1.0
+  created_at: '2026-05-12T13:59:28Z'
+  origin: hermes-assisted-ouroboros-fallback
+  phase: MVP
+  ambiguity_score: 0.12
+  project: memento
+goal: 'Implement the Memento MVP foundation: durable externalized-state sessions, dependency-aware task graph basics,
+  evidence ledger basics, verification policy basics, explicit agentmemory hooks, Graphify checkpoint commands,
+  and explainable dry-run executor routing without relying on executor-native session memory.'
+constraints:
+- Keep Memento as the lifecycle source of truth for runs, sessions, plans, tasks, dispatches, evidence, and verification
+  decisions.
+- Do not depend on executor-native private sessions for correctness, retry, recovery, or progress reporting.
+- Executor summaries, reasoning traces, and self-assessments are advisory and cannot independently satisfy task
+  acceptance.
+- Preserve safety gates for destructive git operations, credentials, production/release actions, and forbidden paths.
+- Apply secret redaction and forbidden-path policies before storing evidence payloads, command output, diffs, or
+  artifacts.
+- Graphify must be checkpoint-driven by default; continuous watch is optional and must not be required for correctness.
+- agentmemory writeback must store only durable reusable lessons, not temporary task progress, raw logs, commit
+  hashes, PR numbers, or raw graph payloads.
+- 'MVP executor adapters should be safe by default: hermes-direct may execute local verification; Codex/Aider adapters
+  may be dry-run command construction unless explicitly enabled.'
+- Prefer minimal schema extensions that are compatible with the existing SQLite-backed local state model.
+- Do not introduce always-on background daemons or cron/watchdog behavior.
+- MVP should remain locally verifiable without requiring Codex, Aider, Goose, SWE-agent, OpenHands, or live Graphify
+  semantic extraction to succeed.
+scope:
+  in:
+  - Run/session/task/dispatch/evidence models for externalized-state orchestration.
+  - Canonical context bundle generation for ready tasks.
+  - Basic evidence ledger with trust levels and append-only semantics.
+  - Basic verification policy model and task accepted/rejected verdict evidence.
+  - Executor registry and route-task preview with hermes-direct plus dry-run Codex/Aider adapters.
+  - Graphify doctor/status/update checkpoint commands and graph evidence records.
+  - Explicit agentmemory prefetch/writeback hooks with strict filtering policy.
+  - CLI/report updates and tests for all MVP behavior.
+  out:
+  - Real Codex/Aider process invocation by default.
+  - Goose, SWE-agent, OpenHands, or OpenCode production adapters.
+  - Confidence-weighted executor performance memory.
+  - Automatic graph-derived task decomposition.
+  - Multi-executor competition or worker pools.
+acceptance_criteria:
+- name: Externalized session state
+  description: Memento stores durable run/session/task/dispatch/evidence state sufficient to reconstruct orchestration
+    after process restart.
+  verification: Create a run, plan, task, dispatch, and evidence record; restart the CLI process; verify status/report
+    reconstructs the same state from SQLite.
+- name: Task graph MVP
+  description: Approved plans can materialize a dependency-aware task graph with task status, dependencies, acceptance
+    criteria, verification policy, context refs, dispatch refs, and evidence refs.
+  verification: Unit tests create a task DAG, reject cycles, and mark tasks ready only after dependencies are accepted.
+- name: Canonical context bundle
+  description: Every ready task can produce an immutable executor-agnostic context bundle containing goal, plan
+    summary, task spec, dependencies, constraints, verification policy, repo refs, optional memory summary, optional
+    graph context, and output contract.
+  verification: CLI command or service method writes a bundle artifact; tests validate required fields and immutability
+    via stable bundle ID/hash.
+- name: Evidence ledger MVP
+  description: Memento records diffs, command results, test results, artifacts, graph snapshots/updates, routing
+    decisions, approvals, blocker reports, and QA verdicts with type, trust level, source, status, relationships,
+    and content refs.
+  verification: Tests append evidence, supersede evidence with a new record, and verify the prior record is not
+    silently mutated.
+- name: Verification policy MVP
+  description: Dispatch-ready tasks have a verification policy with required evidence and commands; accepted/rejected
+    transitions are computed from non-superseded evidence and the final verdict is recorded as evidence.
+  verification: A sample task with passing command evidence becomes accepted; a missing or failing required command
+    produces an actionable rejected verdict.
+- name: Explainable route-task preview
+  description: Memento can preview routing decisions with selected executor, rejected candidates, reasons, risk
+    adjustments, fallback chain, approval requirement, and context profile.
+  verification: CLI `memento route-task --task-id ... --json` returns a deterministic JSON decision without invoking
+    external executors.
+- name: Dry-run executor registry
+  description: Executor registry contains hermes-direct plus dry-run Codex and Aider entries with capabilities,
+    limitations, health status, and command construction that does not execute by default.
+  verification: Tests confirm dry-run dispatch builds invocation metadata and leaves executor_invoked=false unless
+    explicit invoke mode is configured.
+- name: Graphify doctor/status/update checkpoint
+  description: Memento doctor/status reports Graphify availability and graph state; graph update/checkpoint commands
+    record graph_update or graph_snapshot evidence and do not require continuous watch.
+  verification: With Graphify absent or failing, doctor reports optional unavailable; with a mocked graphify runner,
+    graph update records evidence and graph state.
+- name: agentmemory explicit hooks
+  description: Memento exposes explicit memory prefetch/writeback hooks that can attach compact memory summaries
+    to bundles and save only filtered durable lessons.
+  verification: Tests use a fake memory adapter to verify temporary task progress/raw logs are rejected while repo
+    convention lessons are accepted.
+- name: Local verification suite
+  description: MVP changes are covered by unit tests, ruff, compileall, doctor, and sample-smoke.
+  verification: Run `python -m pytest -q`, `python -m ruff check .`, `python -m compileall -q src tests`, `python
+    -m memento.cli doctor --json`, and `python -m memento.cli sample-smoke --workspace /tmp/memento-mvp-smoke --json`
+    successfully.
+ontology_schema:
+  name: MementoMVPFoundation
+  entities:
+  - name: MementoSession
+    fields:
+    - id
+    - run_id
+    - state
+    - goal
+    - plan_id
+    - task_graph_ref
+    - evidence_refs
+  - name: TaskNode
+    fields:
+    - id
+    - parent_id
+    - status
+    - freshness
+    - dependencies
+    - acceptance_criteria
+    - verification_policy
+    - evidence_refs
+  - name: EvidenceRecord
+    fields:
+    - id
+    - type
+    - trust_level
+    - status
+    - source
+    - content_ref
+    - relationships
+  - name: ContextBundle
+    fields:
+    - id
+    - task_id
+    - bundle_hash
+    - plan_summary
+    - constraints
+    - verification_policy
+    - output_contract
+  - name: RoutingDecision
+    fields:
+    - id
+    - task_id
+    - selected_executor
+    - rejected_executors
+    - reasons
+    - fallback_chain
+    - risk_adjustments
+evaluation_principles:
+- name: Safety and recoverability
+  weight: 0.25
+- name: Evidence-driven correctness
+  weight: 0.25
+- name: Executor/session decoupling
+  weight: 0.2
+- name: Local testability without external services
+  weight: 0.15
+- name: Clear CLI/report UX
+  weight: 0.15
+exit_conditions:
+- All MVP acceptance criteria pass locally.
+- No command path relies on OpenCode/Goose/Codex private session memory for correctness.
+- Graphify and agentmemory are optional integrations with graceful degradation.
+- Working tree is clean with a verified commit.

@@ -1,0 +1,139 @@
+metadata:
+  name: memento-v1-executor-routing
+  version: 1.0.0
+  created_at: '2026-05-12T13:59:28Z'
+  origin: hermes-assisted-ouroboros-fallback
+  phase: v1
+  depends_on:
+  - memento-mvp
+  ambiguity_score: 0.14
+  project: memento
+goal: 'Implement production-usable v1 executor routing: real Codex CLI and Aider adapters, isolated worktree dispatch,
+  post-dispatch Graphify checkpoints, memory-informed routing, graph-aware risk adjustment, and auditable route
+  decisions.'
+constraints:
+- Keep Memento as the lifecycle source of truth for runs, sessions, plans, tasks, dispatches, evidence, and verification
+  decisions.
+- Do not depend on executor-native private sessions for correctness, retry, recovery, or progress reporting.
+- Executor summaries, reasoning traces, and self-assessments are advisory and cannot independently satisfy task
+  acceptance.
+- Preserve safety gates for destructive git operations, credentials, production/release actions, and forbidden paths.
+- Apply secret redaction and forbidden-path policies before storing evidence payloads, command output, diffs, or
+  artifacts.
+- Graphify must be checkpoint-driven by default; continuous watch is optional and must not be required for correctness.
+- agentmemory writeback must store only durable reusable lessons, not temporary task progress, raw logs, commit
+  hashes, PR numbers, or raw graph payloads.
+- External executor attempts must run in isolated worktrees by default unless explicitly configured otherwise.
+- Codex/Aider self-reports must be independently verified by Memento before task acceptance.
+- Router may strengthen verification policy using Graphify/agentmemory but must not weaken required checks without
+  explicit approval.
+- OpenCode remains manual_or_experimental and is not a default automatic executor in v1.
+scope:
+  in:
+  - Real Codex CLI adapter with healthcheck, prompt rendering, timeout, result collection, and structured failure
+    handling.
+  - Real Aider adapter for scoped edits with allowed-files/relevant-files enforcement.
+  - Worktree isolation for external dispatch attempts, including partial diff quarantine.
+  - Graphify post-dispatch update after verified code/docs changes.
+  - agentmemory-informed route-task using repo conventions, known pitfalls, and executor history summaries.
+  - Graph-aware risk adjustment using graph staleness, centrality/god-node signals, touched communities, and affected
+    files.
+  - Auditable routing decisions and user override handling with hard safety preservation.
+  out:
+  - Goose/SWE-agent/OpenHands production adapters.
+  - Automatic confidence-weighted performance aggregation beyond simple memory recall.
+  - Multi-executor competition.
+  - Deep graph-derived task decomposition.
+acceptance_criteria:
+- name: Codex CLI adapter
+  description: Memento can healthcheck Codex, render a context bundle into a one-shot prompt/file invocation, run
+    with timeout in an isolated worktree when enabled, collect changed files/output/exit code, and record evidence.
+  verification: Mocked tests cover success, timeout, process error, no-change, and verification-failed paths; optional
+    live smoke is gated by availability.
+- name: Aider adapter
+  description: Memento can route scoped edit tasks to Aider with allowed/relevant files and collect results without
+    trusting Aider self-report.
+  verification: Tests confirm broad tasks are rejected for Aider when file scope is unclear and scoped tasks produce
+    invocation metadata/results.
+- name: Isolated worktree dispatch
+  description: External executor dispatches use isolated worktrees by default and never corrupt the canonical workspace
+    with unverified partial work.
+  verification: A failing external dispatch leaves canonical workspace clean and stores partial diff as quarantined
+    advisory evidence.
+- name: Post-dispatch Graphify checkpoint
+  description: After verified executor work changes code or docs, Memento triggers a Graphify checkpoint/update
+    according to policy and attaches graph evidence.
+  verification: Mock Graphify runner records graph_update evidence, graph state current/stale/update_failed, and
+    report status after dispatch verification.
+- name: Memory-informed routing
+  description: Router uses agentmemory recall for repo conventions, known pitfalls, verification commands, and executor
+    suitability when ranking candidates.
+  verification: Fake memory adapter changes routing reasons/score and adds verification command suggestions without
+    weakening required checks.
+- name: Graph-aware risk adjustment
+  description: Router uses Graphify impact signals to adjust task risk, context profile, verification strength,
+    and approval requirements.
+  verification: A task touching a mocked god node or multiple communities is promoted to higher risk and requires
+    stronger verification or approval.
+- name: Manual override with safety preservation
+  description: User-specified executor overrides are honored only if hard safety/capability constraints still pass.
+  verification: Tests show an override is rejected when sandbox/forbidden-path requirements cannot be satisfied
+    and the rejection reason is recorded.
+- name: Actionable retry/fallback
+  description: Timeouts, process errors, missing context, no changes, unsafe diffs, and verification failures map
+    to policy-driven retry, fallback, repair task, Hermes escalation, or blocked state.
+  verification: Unit tests verify failure category to next-action mapping and audit events.
+- name: v1 verification suite
+  description: v1 functionality passes local tests and smoke gates.
+  verification: Run pytest, ruff, compileall, doctor, sample-smoke, and mocked Codex/Aider/Graphify adapter tests
+    successfully.
+ontology_schema:
+  name: MementoV1ExecutorRouting
+  entities:
+  - name: ExecutorAdapter
+    fields:
+    - name
+    - capabilities
+    - health
+    - prepare
+    - dispatch
+    - collect
+    - cancel
+  - name: IsolatedWorktree
+    fields:
+    - path
+    - base_ref
+    - dispatch_id
+    - status
+    - cleanup_policy
+  - name: GraphCheckpoint
+    fields:
+    - id
+    - trigger
+    - status
+    - graph_state
+    - changed_files
+    - artifact_refs
+  - name: MemoryRecall
+    fields:
+    - repo_profile
+    - known_pitfalls
+    - executor_history
+    - verification_commands
+evaluation_principles:
+- name: Executor isolation
+  weight: 0.25
+- name: Independent verification
+  weight: 0.25
+- name: Routing explainability
+  weight: 0.2
+- name: Graph/memory usefulness
+  weight: 0.15
+- name: Failure handling quality
+  weight: 0.15
+exit_conditions:
+- Codex/Aider adapters are implemented with mocked tests and optional live smoke.
+- External executor partial work is quarantined until verified.
+- Graphify post-dispatch checkpointing is available and optional-failure safe.
+- Route decisions are auditable and explainable.
+- Working tree is clean with a verified commit.

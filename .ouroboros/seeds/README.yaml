@@ -1,0 +1,19 @@
+metadata:
+  name: memento-seed-roadmap-index
+  created_at: '2026-05-12T13:59:28Z'
+  origin: hermes-assisted-ouroboros-fallback
+seeds:
+- phase: MVP
+  path: .ouroboros/seeds/memento-mvp.seed.yaml
+  summary: 'Foundation: externalized sessions, task graph, evidence, verification, dry-run routing, Graphify/agentmemory
+    hooks.'
+- phase: v1
+  path: .ouroboros/seeds/memento-v1.seed.yaml
+  summary: Real Codex/Aider adapters, worktree isolation, post-dispatch Graphify, memory/graph-aware routing.
+- phase: v2
+  path: .ouroboros/seeds/memento-v2.seed.yaml
+  summary: Goose/SWE-agent, confidence learning, verification enrichment, graph task proposals, repair/fallback
+    budgets.
+- phase: v3
+  path: .ouroboros/seeds/memento-v3.seed.yaml
+  summary: API worker pool/OpenHands, multi-executor competition, CI/team/release gates, graph-diff regression detection.
