@@ -106,7 +106,7 @@ def route_task(
         if name == "opencode":
             rejected[name] = {"reason": "manual_or_experimental_only"}
             continue
-        if name == "swe-agent" and task.verification_policy.get("requires_sandbox") and not sandbox_available:
+        if name == "swe-agent" and not sandbox_available:
             rejected[name] = {"reason": "sandbox_required_unavailable"}
             continue
         score = 10
@@ -137,12 +137,15 @@ def route_task(
         }
         if allowed:
             selected = requested_executor
+    fallback_chain = [name for _score, name in candidates if name != selected]
+    if "hermes-direct" not in fallback_chain and selected != "hermes-direct":
+        fallback_chain.append("hermes-direct")
     decision = {
         "status": "proposed",
         "selected_executor": selected,
         "auto_dispatch": False,
         "requires_user_approval": task.risk == "high",
-        "fallback_chain": [name for _score, name in candidates if name != selected][:2] + ["hermes-direct"],
+        "fallback_chain": fallback_chain[:3],
         "rejected_executors": rejected,
         "reasons": [
             f"Task kind {task.kind!r} and risk {task.risk!r} matched MVP dry-run registry.",
