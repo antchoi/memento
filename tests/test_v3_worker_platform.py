@@ -1,0 +1,114 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from memento.approvals import record_approval, release_gate_satisfied
+from memento.ci import record_external_check
+from memento.competition import select_patch
+from memento.domain import SisyphusTask, TaskStatus
+from memento.graph_diff import detect_graph_regressions
+from memento.recovery import recover_dispatch_jobs
+from memento.state import SQLiteStateStore
+from memento.worker_pool import MockApiSandboxWorker
+
+
+def test_api_sandbox_worker_protocol_submit_poll_cancel_collect() -> None:
+    worker = MockApiSandboxWorker(worker_id="openhands-mock", sandbox_modes=("docker",))
+    submitted = worker.submit({"task_id": "task_1", "prompt": "fix bug"})
+    assert submitted["status"] == "submitted"
+    assert submitted["native_session_ref"]["kind"] == "api_worker_job"
+
+    running = worker.poll(submitted["job_id"])
+    assert running["status"] == "running"
+
+    collected = worker.collect(submitted["job_id"], result={"patch_ref": "file://patch.diff", "exit_code": 0})
+    assert collected["status"] == "completed"
+    assert collected["result"]["patch_ref"] == "file://patch.diff"
+
+    cancelled = worker.cancel(submitted["job_id"])
+    assert cancelled["status"] == "completed"
+
+
+def test_multi_executor_competition_selects_verified_safer_patch() -> None:
+    candidates = [
+        {
+            "dispatch_id": "dispatch_fast",
+            "executor": "codex",
+            "verification_passed": False,
+            "unsafe_paths": [],
+            "diff_size": 20,
+            "graph_risk": "low",
+        },
+        {
+            "dispatch_id": "dispatch_safe",
+            "executor": "aider",
+            "verification_passed": True,
+            "unsafe_paths": [],
+            "diff_size": 35,
+            "graph_risk": "low",
+        },
+        {
+            "dispatch_id": "dispatch_risky",
+            "executor": "goose",
+            "verification_passed": True,
+            "unsafe_paths": [".env"],
+            "diff_size": 5,
+            "graph_risk": "high",
+        },
+    ]
+    decision = select_patch(candidates, policy={"require_approval_for_high_risk": True})
+    assert decision["selected_dispatch_id"] == "dispatch_safe"
+    assert decision["preserved_evidence_trails"] == ["dispatch_fast", "dispatch_safe", "dispatch_risky"]
+    assert decision["rejected"]["dispatch_risky"]["requires_approval"] is True
+
+
+def test_graph_diff_regression_warnings_are_advisory_by_default() -> None:
+    before = {"god_nodes": ["src/api.py"], "cross_community_edges": 1, "modularity": 0.8}
+    after = {"god_nodes": ["src/api.py", "src/global.py"], "cross_community_edges": 4, "modularity": 0.5}
+    diff = detect_graph_regressions(before, after)
+    assert diff["status"] == "warning"
+    assert diff["blocking"] is False
+    assert "new_god_node" in diff["warnings"]
+    assert "cross_community_edges_increased" in diff["warnings"]
+
+
+def test_external_ci_evidence_and_release_approval_gate(tmp_path: Path) -> None:
+    store = SQLiteStateStore(SQLiteStateStore.default_path(tmp_path))
+    run = store.create_run(goal="release", workspace=str(tmp_path))
+    ci = record_external_check(
+        store,
+        run_id=run.id,
+        provider="github_actions",
+        payload={"run_id": 123, "status": "completed", "conclusion": "success", "url": "https://ci.example/run/123"},
+    )
+    approval = record_approval(
+        store,
+        run_id=run.id,
+        actor="c",
+        scope={"kind": "release", "id": run.id},
+        prompt="Approve release?",
+        response="approved",
+    )
+    assert ci.type == "external_check"
+    assert ci.trust_level == "trusted"
+    assert approval.type == "user_approval"
+    assert release_gate_satisfied(store, run.id, required_checks=("github_actions",), required_approvals=1)["ok"] is True
+
+
+def test_recover_long_running_jobs_from_canonical_state(tmp_path: Path) -> None:
+    store = SQLiteStateStore(SQLiteStateStore.default_path(tmp_path))
+    run = store.create_run(goal="recover", workspace=str(tmp_path))
+    task = store.save_task(
+        SisyphusTask(
+            run_id=run.id,
+            title="Long job",
+            description="Resume from bundle",
+            status=TaskStatus.IN_PROGRESS,
+            verification_policy={"required_commands": ["python -m pytest -q"]},
+            acceptance_criteria=("tests pass",),
+        )
+    )
+    jobs = recover_dispatch_jobs(store, run.id)
+    assert jobs[0]["task_id"] == task.id
+    assert jobs[0]["recovery_mode"] == "regenerate_context_bundle"
+    assert jobs[0]["native_session_required"] is False
