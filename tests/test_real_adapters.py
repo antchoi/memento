@@ -81,6 +81,8 @@ def test_outbox_executor_adapter_records_explicit_dispatch_without_spawning_proc
 def test_command_dispatch_task_queues_executor_outbox_and_audit(tmp_path: Path) -> None:
     service = CommandService(store=SQLiteStateStore(tmp_path / "state.db"))
     run = service.start({"goal": "ship", "workspace": str(tmp_path), "allow_spike": True})["run"]
+    plan = service.plan({"run_id": run["id"], "title": "Dispatch plan", "body": "Queue work"})["plan"]
+    service.approve_plan({"run_id": run["id"], "plan_id": plan["id"]})
     task = service.enqueue_event({"run_id": run["id"], "title": "Queued work"})["task"]
 
     result = service.dispatch_task(

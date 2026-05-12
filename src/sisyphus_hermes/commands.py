@@ -16,6 +16,7 @@ from .domain import (
     ReviewGate,
     RunStatus,
     SisyphusPlan,
+    SisyphusRun,
     TaskStatus,
     utc_now,
 )
@@ -272,6 +273,18 @@ class CommandService:
                 "start": start_result,
             }
         run_id = start_result["run"]["id"]
+        plan_result = self.plan(
+            {
+                "workspace": workspace,
+                "run_id": run_id,
+                "title": "Sample canonical plan",
+                "body": "Approve a minimal plan before exercising executor dispatch.",
+                "acceptance_criteria": ["sample task dispatch completes through the outbox lifecycle"],
+            }
+        )
+        approve_result = self.approve_plan(
+            {"workspace": workspace, "run_id": run_id, "plan_id": plan_result["plan"]["id"]}
+        )
         event_result = self.enqueue_event(
             {
                 "workspace": workspace,
@@ -301,6 +314,8 @@ class CommandService:
             "ok": bool(
                 init_result.get("ok")
                 and doctor_result.get("ok")
+                and plan_result.get("ok")
+                and approve_result.get("ok")
                 and event_result.get("ok")
                 and dispatch_result.get("ok")
                 and claim_result.get("ok")
@@ -315,6 +330,8 @@ class CommandService:
             "init": init_result,
             "doctor": doctor_result,
             "start": start_result,
+            "plan": plan_result,
+            "approve_plan": approve_result,
             "event": event_result,
             "dispatch": dispatch_result,
             "claim": claim_result,
@@ -331,14 +348,9 @@ class CommandService:
             run = store.get_run(run_id)
             if run is None:
                 return {"ok": False, "error": "run_not_found", "run_id": run_id}
-            if not args.get("allow_spike") and store.canonical_plan(run.id) is None:
-                store.append_audit(
-                    run.id,
-                    actor="sisyphus_lifecycle_worker",
-                    action="execution.blocked",
-                    summary="Canonical plan required before execution.",
-                )
-                return {"ok": False, "error": "canonical_plan_required", "run": run.to_record()}
+            gate_result = self._execution_gate_result(store, run, command="start", allow_spike=bool(args.get("allow_spike")))
+            if gate_result is not None:
+                return gate_result
             run = store.set_run_status(run.id, RunStatus.ACTIVE)
             store.append_audit(run.id, actor="sisyphus_lifecycle_worker", action="run.started")
             return {"ok": True, "command": "start", "run": run.to_record()}
@@ -497,6 +509,13 @@ class CommandService:
         if not result.get("ok"):
             return result
         payload = result["payload"]
+        store = self._store_for(args)
+        run = store.get_run(payload.run_id)
+        if run is None:
+            return {"ok": False, "error": "run_not_found", "command": "dispatch-task"}
+        gate_result = self._execution_gate_result(store, run, command="dispatch-task")
+        if gate_result is not None:
+            return gate_result
         workspace = Path(payload.repo_path)
         executor = str(args.get("executor") or "hermes-profile")
         adapter = OutboxExecutorAdapter(args.get("outbox_path") or OutboxExecutorAdapter.default_path(workspace))
@@ -507,7 +526,6 @@ class CommandService:
                 reason=str(args.get("reason") or "manual dispatch"),
             )
         )
-        store = self._store_for(args)
         store.append_audit(
             payload.run_id,
             actor="sisyphus_lifecycle_worker",
@@ -636,6 +654,41 @@ class CommandService:
         if dispatch["status"] != "claimed":
             return {"ok": False, "error": "dispatch_not_claimed", **dispatch}
         return dispatch
+
+    def _execution_gate_result(
+        self,
+        store: SQLiteStateStore,
+        run: SisyphusRun,
+        *,
+        command: str,
+        allow_spike: bool = False,
+    ) -> dict[str, Any] | None:
+        if not allow_spike and store.canonical_plan(run.id) is None:
+            store.append_audit(
+                run.id,
+                actor="sisyphus_lifecycle_worker",
+                action="execution.blocked",
+                summary="Canonical plan required before execution.",
+            )
+            return {"ok": False, "command": command, "error": "canonical_plan_required", "run": run.to_record()}
+        blocking_gates = [gate.to_record() for gate in store.list_gates(run.id) if gate.status == GateStatus.FAILED]
+        if blocking_gates:
+            blocked_run = store.set_run_status(run.id, RunStatus.BLOCKED)
+            store.append_audit(
+                run.id,
+                actor="sisyphus_lifecycle_worker",
+                action="execution.blocked",
+                summary="Failed review gate blocks execution.",
+                payload={"blocking_gate_ids": [gate["id"] for gate in blocking_gates]},
+            )
+            return {
+                "ok": False,
+                "command": command,
+                "error": "review_gate_blocking",
+                "run": blocked_run.to_record(),
+                "blocking_gates": blocking_gates,
+            }
+        return None
 
     def _outbox_adapter_for(self, args: dict[str, Any]) -> OutboxExecutorAdapter:
         if args.get("outbox_path"):

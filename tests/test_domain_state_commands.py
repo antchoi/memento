@@ -70,6 +70,23 @@ def test_approve_plan_promotes_draft_and_records_audit(tmp_path: Path) -> None:
     assert any(event["action"] == "plan.approved" for event in service.status({"run_id": run["id"]})["audit"])
 
 
+def test_start_rejects_existing_run_with_failed_review_gate(tmp_path: Path) -> None:
+    service = CommandService(store=SQLiteStateStore(tmp_path / "state.db"))
+    run = service.start({"goal": "ship", "workspace": str(tmp_path)})["run"]
+    draft = service.plan({"run_id": run["id"], "title": "Draft", "body": "steps"})["plan"]
+    service.approve_plan({"run_id": run["id"], "plan_id": draft["id"]})
+    failed = service.review(
+        {"run_id": run["id"], "kind": "implementation_review", "status": "failed", "summary": "Fix required"}
+    )["gate"]
+
+    blocked = service.start({"run_id": run["id"]})
+
+    assert blocked["ok"] is False
+    assert blocked["error"] == "review_gate_blocking"
+    assert blocked["blocking_gates"] == [failed]
+    assert blocked["run"]["status"] == RunStatus.BLOCKED.value
+
+
 def test_command_surface_has_all_required_handlers(tmp_path: Path) -> None:
     service = CommandService(store=SQLiteStateStore(tmp_path / "state.db"))
     expected = {

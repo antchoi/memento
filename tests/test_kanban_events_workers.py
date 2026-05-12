@@ -136,6 +136,40 @@ def test_worker_payload_rejects_unknown_task_without_dispatching(tmp_path: Path)
     assert result == {"ok": False, "error": "task_not_found", "task_id": "missing"}
 
 
+def test_dispatch_rejects_task_without_canonical_plan_and_writes_no_outbox(tmp_path: Path) -> None:
+    service = CommandService(store=SQLiteStateStore(tmp_path / "state.db"))
+    run = service.start({"goal": "ship", "workspace": str(tmp_path)})["run"]
+    task = service.enqueue_event({"run_id": run["id"], "title": "Implement feature"})["task"]
+    outbox_path = tmp_path / "outbox.jsonl"
+
+    result = service.dispatch_task({"run_id": run["id"], "task_id": task["id"], "outbox_path": str(outbox_path)})
+
+    assert result["ok"] is False
+    assert result["error"] == "canonical_plan_required"
+    assert result["command"] == "dispatch-task"
+    assert not outbox_path.exists()
+    assert service.list_dispatches({"outbox_path": str(outbox_path)})["dispatches"] == []
+
+
+def test_dispatch_rejects_when_failed_review_gate_is_blocking(tmp_path: Path) -> None:
+    service = CommandService(store=SQLiteStateStore(tmp_path / "state.db"))
+    run = service.start({"goal": "ship", "workspace": str(tmp_path)})["run"]
+    plan = service.plan({"run_id": run["id"], "title": "Plan", "body": "Do it"})["plan"]
+    service.approve_plan({"run_id": run["id"], "plan_id": plan["id"]})
+    task = service.enqueue_event({"run_id": run["id"], "title": "Implement feature"})["task"]
+    failed = service.review(
+        {"run_id": run["id"], "kind": "quality_review", "status": "failed", "summary": "Tests are red"}
+    )["gate"]
+    outbox_path = tmp_path / "outbox.jsonl"
+
+    result = service.dispatch_task({"run_id": run["id"], "task_id": task["id"], "outbox_path": str(outbox_path)})
+
+    assert result["ok"] is False
+    assert result["error"] == "review_gate_blocking"
+    assert result["blocking_gates"] == [failed]
+    assert not outbox_path.exists()
+
+
 def test_build_worker_payload_round_trip_from_domain_models(tmp_path: Path) -> None:
     store = SQLiteStateStore(tmp_path / "state.db")
     run = store.create_run(goal="ship", workspace=str(tmp_path))
