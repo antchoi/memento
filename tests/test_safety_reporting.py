@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from memento.domain import SisyphusTask
+from memento.domain import MementoTask
 from memento.reporting import render_report, render_status
 from memento.safety import (
     classify_git_operation,
@@ -57,11 +57,11 @@ def test_status_and_report_are_telegram_friendly(tmp_path: Path) -> None:
     text = render_status(status)
     report = render_report(status)
 
-    assert "## Sisyphus status" in text
+    assert "## Memento status" in text
     assert "Goal: ship" in text
     assert "Metis" in report
     assert "Momus" in report
-    assert "Sisyphus" in report
+    assert "Memento" in report
     assert "Hephaestus" in report
     assert "Hermes-Sheriff" in report
     assert "|" not in text
@@ -88,7 +88,7 @@ def test_status_output_includes_each_roles_latest_action(tmp_path: Path) -> None
     assert "## Role latest actions" in text
     assert "- Metis: plan.created — Plan" in text
     assert "- Momus: gate.passed — implementation evidence accepted" in text
-    assert "- Sisyphus: execution.spike_allowed — Bounded spike allowed without canonical plan." in text
+    assert "- Memento: execution.spike_allowed — Bounded spike allowed without canonical plan." in text
     assert "- Hephaestus: evidence.added — pytest passed" in text
     assert "- Hermes-Sheriff: preflight.checked — repo safe" in text
 
@@ -106,7 +106,7 @@ def test_cancel_report_lists_incomplete_tasks_and_child_process_handles(tmp_path
     store = SQLiteStateStore(tmp_path / "state.db")
     service = CommandService(store=store)
     run = service.start({"goal": "ship", "workspace": str(tmp_path), "allow_spike": True})["run"]
-    store.save_task(SisyphusTask(run_id=run["id"], title="Finish adapter", description="Still running"))
+    store.save_task(MementoTask(run_id=run["id"], title="Finish adapter", description="Still running"))
 
     service.cancel(
         {

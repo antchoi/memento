@@ -17,7 +17,7 @@ node_modules/
 
 # Local Hermes/Ouroboros runtime state
 .hermes/runtime/
-.sisyphus/
+.memento/
 .ouroboros/data/
 .ouroboros/runs/
 

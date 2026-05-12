@@ -28,8 +28,8 @@ def test_doctor_reports_real_local_install_and_plugin_readiness(tmp_path: Path) 
     assert result["local_install"]["module"] == "memento"
     assert result["local_install"]["console_script"] == "memento"
     assert "memento.doctor" in result["plugin_registration"]["commands"]
-    assert result["runtime_paths"]["state"].endswith(".sisyphus/state.sqlite3")
-    assert result["runtime_paths"]["executor_outbox"].endswith(".sisyphus/executor-outbox.jsonl")
+    assert result["runtime_paths"]["state"].endswith(".memento/state.sqlite3")
+    assert result["runtime_paths"]["executor_outbox"].endswith(".memento/executor-outbox.jsonl")
 
 
 def test_module_cli_doctor_and_sample_smoke_work_from_checkout(tmp_path: Path) -> None:

@@ -1,6 +1,6 @@
 metadata:
   seed_id: memento-plugin-v0
-  title: Hermes-native Sisyphus full plugin
+  title: Hermes-native Memento full plugin
   version: 0.1.0
   created_at: '2026-05-10T23:04:07Z'
   project_dir: /Users/yhchoi/workspace/memento
@@ -12,8 +12,8 @@ metadata:
   - interview_b7911404d0e343e6
   ambiguity_score: 0.15
   status: seed_ready_for_ouroboros_execution
-goal: Build a production-oriented Hermes Agent plugin named memento that ports the useful workflow ideas of oh-my-openagent's Sisyphus/Ultraworker into a Hermes-native architecture. The plugin must treat Sisyphus as a disciplined, durable long-horizon task lifecycle rather than as an OpenCode watcher or a single opaque long-running prompt. It must provide user-facing commands and internal services for planning, starting, monitoring, reviewing, pausing, cancelling, resuming, and reporting coding work through Hermes primitives.
-problem_statement: The current Hermes + OpenCode + oh-my-openagent/Sisyphus integration is brittle because Hermes can only observe OpenCode indirectly through logs, process state, and database artifacts. Agent naming, plugin loading, and TUI state can drift, causing false progress reports and failed delegation. A Hermes-native Sisyphus plugin should eliminate this mismatch by making Hermes' own Kanban board, profiles, skills, memory/session search, cron/event watchers, subagents, and terminal/file tools the source of truth.
+goal: Build a production-oriented Hermes Agent plugin named memento that ports the useful workflow ideas of oh-my-openagent's Memento/Ultraworker into a Hermes-native architecture. The plugin must treat Memento as a disciplined, durable long-horizon task lifecycle rather than as an OpenCode watcher or a single opaque long-running prompt. It must provide user-facing commands and internal services for planning, starting, monitoring, reviewing, pausing, cancelling, resuming, and reporting coding work through Hermes primitives.
+problem_statement: The current Hermes + OpenCode + oh-my-openagent/Memento integration is brittle because Hermes can only observe OpenCode indirectly through logs, process state, and database artifacts. Agent naming, plugin loading, and TUI state can drift, causing false progress reports and failed delegation. A Hermes-native Memento plugin should eliminate this mismatch by making Hermes' own Kanban board, profiles, skills, memory/session search, cron/event watchers, subagents, and terminal/file tools the source of truth.
 actors:
 - name: founder_user
   responsibility: Provides repository/workspace path, goal/task text, approvals, cancellation decisions, and explicit consent for any guarded operation.
@@ -23,7 +23,7 @@ actors:
   responsibility: Produces plans, risks, assumptions, questions, task decompositions, and acceptance criteria before execution.
 - name: momus_reviewer
   responsibility: Critiques draft plans and implementation evidence, blocks weak assumptions, and records review gates.
-- name: sisyphus_lifecycle_worker
+- name: memento_lifecycle_worker
   responsibility: Owns durable Run/Plan/Task lifecycle state and keeps long-horizon work moving through approved state transitions.
 - name: hephaestus_executor
   responsibility: Executes only approved, scoped tasks through Hermes-native workers or optional executor adapters and records evidence.
@@ -59,11 +59,11 @@ runtime_context:
   - cloud sync
   - paid services
   - production deployment
-  - log-scraping supervision of OpenCode, Codex, Claude Code, or oh-my-openagent Sisyphus sessions
+  - log-scraping supervision of OpenCode, Codex, Claude Code, or oh-my-openagent Memento sessions
 primary_users:
 - name: repository_owner
   description: A developer who wants long-horizon coding work coordinated from Hermes/Telegram/CLI with durable status and review gates.
-- name: sisyphus_worker
+- name: memento_worker
   description: A Hermes profile or spawned worker process responsible for executing scoped implementation tasks.
 - name: reviewer_or_critic
   description: A Hermes profile/subagent responsible for adversarial review, acceptance-criteria checks, and safety gates.
@@ -76,12 +76,12 @@ non_goals:
 - Store or print API keys, OAuth tokens, private SSH keys, or other secrets.
 - Cloud sync, paid service integrations, or production deployment automation in the MVP.
 - Let cron jobs execute implementation work directly; cron may only detect events and enqueue durable work.
-- Treat OpenCode/Codex/Claude Code logs, TUI state, or process output as the Sisyphus lifecycle source of truth.
+- Treat OpenCode/Codex/Claude Code logs, TUI state, or process output as the Memento lifecycle source of truth.
 mvp_scope:
   required:
   - Standalone Hermes plugin repository at /Users/yhchoi/workspace/memento.
   - Command handlers for init, start, plan, approve-plan, status, pause, resume, cancel, review, report, and doctor.
-  - Observable role behavior for Metis, Momus, Sisyphus, Hephaestus, and Hermes-Sheriff through persisted decisions/actions and report output.
+  - Observable role behavior for Metis, Momus, Memento, Hephaestus, and Hermes-Sheriff through persisted decisions/actions and report output.
   - Kanban-backed durable lifecycle with SQLite fallback.
   - Append-only audit/evidence records for success, failure, blocked, and guarded operations.
   - Telegram-friendly default reporting plus structured JSON output where useful for tests.
@@ -97,7 +97,7 @@ constraints:
 - 'environment: Generated runtime state must stay under project-local or Hermes-approved state directories and be gitignored when not source.'
 - 'architecture: Design for full Hermes plugin architecture from the outset.'
 - 'architecture: {''Use Hermes-native primitives as first-class dependencies'': ''profiles, skills, Kanban, cron/event watchers, memory/session search, delegation/subagents, terminal/file tools, process management, and messaging-friendly reporting.''}'
-- 'architecture: OpenCode may appear only as an optional executor peer in a later extension point, never as the core Sisyphus engine.'
+- 'architecture: OpenCode may appear only as an optional executor peer in a later extension point, never as the core Memento engine.'
 - 'safety: Protect dirty worktrees before any implementation task.'
 - 'safety: No git reset --hard, git clean, force push, main direct push, or merge without explicit user approval.'
 - 'safety: All command execution must be scoped to a known repository/workdir.'
@@ -105,18 +105,18 @@ constraints:
 - 'quality: Tests and documentation are required for every public command and state transition.'
 - 'quality: Acceptance criteria must be mechanically verifiable where possible.'
 ontology_schema:
-  name: SisyphusHermesDomain
-  description: 'Hermes-native Sisyphus durable task lifecycle ontology covering runs, plans, tasks, review gates, evidence, audit events, worker roles, and executor boundaries. Entities: SisyphusRun, SisyphusPlan, SisyphusTask, ReviewGate, Evidence, AuditEvent'
+  name: MementoDomain
+  description: 'Hermes-native Memento durable task lifecycle ontology covering runs, plans, tasks, review gates, evidence, audit events, worker roles, and executor boundaries. Entities: MementoRun, MementoPlan, MementoTask, ReviewGate, Evidence, AuditEvent'
   fields:
-  - name: SisyphusRun
+  - name: MementoRun
     type: object
     description: Top-level long-horizon work session initiated by a user.
     required: true
-  - name: SisyphusPlan
+  - name: MementoPlan
     type: object
     description: Draft or canonical plan that gates work execution.
     required: true
-  - name: SisyphusTask
+  - name: MementoTask
     type: object
     description: A durable unit of work mapped to Hermes Kanban where possible.
     required: true
@@ -150,7 +150,7 @@ functional_requirements:
   - Prefer Hermes Kanban as the task source of truth when available; provide a project-local fallback store if Kanban is unavailable.
   - Provide idempotent state transitions and recovery after process interruption.
   worker_orchestration:
-  - Support Hermes profile workers for long-lived roles such as sisyphus, metis, momus, hephaestus, and sheriff.
+  - Support Hermes profile workers for long-lived roles such as memento, metis, momus, hephaestus, and sheriff.
   - Support delegate_task for bounded sub-reviews or research fanout.
   - Ensure every worker receives explicit scoped context; no worker may depend on hidden parent conversation state.
   review_gates:
@@ -186,8 +186,8 @@ deliverables:
   description: Telegram-friendly and JSON status rendering.
 - path: src/memento/executors/
   description: Hermes profile/delegate_task executor adapters and optional external executor interface.
-- path: skills/sisyphus-ultraworker/SKILL.md
-  description: Bundled skill defining Sisyphus worker discipline.
+- path: skills/memento-lifecycle-worker/SKILL.md
+  description: Bundled skill defining Memento worker discipline.
 - path: skills/metis-planner/SKILL.md
   description: Bundled skill defining planning and risk analysis discipline.
 - path: skills/momus-reviewer/SKILL.md
@@ -211,7 +211,7 @@ acceptance_criteria:
 - 'AC10_review_gates — At least preflight, plan review, implementation/spec review, quality review, and final acceptance gates are represented and state transitions respect failed gates. — Verification: Gate transition tests.'
 - 'AC11_reporting — status/report output is concise, Telegram-friendly, and includes goal, state, evidence, changed files, verification results, blockers, risks, and next action. — Verification: Snapshot tests for text and JSON renderers.'
 - 'AC12_cancellation_pause — pause and cancel commands update state, record audit events, and report incomplete tasks and known child process handles when provided by adapters. — Verification: Unit tests with fake process/executor adapters.'
-- 'AC13_bundled_skills — Bundled Sisyphus/Metis/Momus skills exist, have valid SKILL.md frontmatter, and document triggers, workflow, pitfalls, and verification. — Verification: Skill frontmatter parser test.'
+- 'AC13_bundled_skills — Bundled Memento/Metis/Momus skills exist, have valid SKILL.md frontmatter, and document triggers, workflow, pitfalls, and verification. — Verification: Skill frontmatter parser test.'
 - 'AC14_documentation — docs/architecture.md and docs/user-guide.md explain architecture, install/setup, command examples, safety model, state recovery, and optional executor extension. — Verification: Documentation checklist test or reviewer checklist.'
 - 'AC15_no_opencode_dependency — Core tests pass without OpenCode installed and no core module imports OpenCode-specific packages. — Verification: CI/local test environment without OpenCode plus import scan.'
 - 'AC16_test_suite — pytest suite passes locally and covers domain models, state, commands, safety, reporting, plugin registration, and skill validation. — Verification: python -m pytest -q.'
@@ -219,7 +219,7 @@ acceptance_criteria:
 - 'AC18_seed_traceability — Implementation references this Seed in README or docs and maps acceptance criteria to tests or checklist items. — Verification: README/docs contain seed path and AC mapping.'
 - 'AC19_actor_input_output_runtime_closure — Seed and implementation explicitly model actors, accepted inputs, produced outputs, runtime context, MVP-required scope, and deferred/non-goal boundaries. — Verification: Documentation/schema tests assert these sections exist and command results reference the same actor/input/output vocabulary.'
 - 'AC20_cron_event_to_task_only — Cron/event integration can create or update durable tasks but never executes implementation work directly. — Verification: Unit tests simulate cron/event payloads and assert Kanban/SQLite task records are created while executor adapters are not invoked.'
-- 'AC21_role_last_action_visibility — status/report output includes each role''s most recent decision/action when available: Metis, Momus, Sisyphus, Hephaestus, and Hermes-Sheriff. — Verification: Snapshot tests over seeded audit/evidence state.'
+- 'AC21_role_last_action_visibility — status/report output includes each role''s most recent decision/action when available: Metis, Momus, Memento, Hephaestus, and Hermes-Sheriff. — Verification: Snapshot tests over seeded audit/evidence state.'
 - 'AC22_sqlite_fallback_contract — When Kanban is unavailable, SQLite becomes the local source of truth with equivalent Run/Plan/Task/Gate/Evidence/AuditEvent persistence semantics. — Verification: Integration test runs init/plan/approve-plan/start/status/report entirely against a temporary SQLite database with a fake-unavailable Kanban adapter.'
 evaluation_principles:
 - name: hermes_native_architecture
@@ -269,7 +269,7 @@ suggested_implementation_slices:
 - id: S6_skills_docs
   title: Bundled skills and documentation
   tasks:
-  - Author Sisyphus/Metis/Momus SKILL.md files.
+  - Author Memento/Metis/Momus SKILL.md files.
   - Write architecture and user guide docs.
 - id: S7_integration_hardening
   title: Integration tests and extension points

@@ -17,7 +17,7 @@ def _queued_dispatch(tmp_path: Path) -> tuple[CommandService, dict, dict, dict, 
     ]
     service.approve_plan({"run_id": run["id"], "plan_id": plan["id"]})
     task = service.enqueue_event({"run_id": run["id"], "title": "Implement lifecycle"})["task"]
-    outbox_path = tmp_path / ".sisyphus" / "executor-outbox.jsonl"
+    outbox_path = tmp_path / ".memento" / "executor-outbox.jsonl"
     dispatch = service.dispatch_task(
         {
             "run_id": run["id"],

@@ -1,6 +1,6 @@
 ---
 name: momus-reviewer
-description: Hermes-native Sisyphus adversarial review gate and acceptance evidence discipline.
+description: Hermes-native Memento adversarial review gate and acceptance evidence discipline.
 version: 0.1.0
 ---
 
@@ -9,7 +9,7 @@ version: 0.1.0
 ## Trigger
 
 Use when a draft plan, implementation slice, safety preflight, quality result, or
-final acceptance package needs adversarial review before a Sisyphus state
+final acceptance package needs adversarial review before a Memento state
 transition.
 
 ## Workflow

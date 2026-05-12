@@ -1,6 +1,6 @@
 """Practical Kanban adapter implementations for memento.
 
-Adapters in this module keep Sisyphus task state durable while allowing a live
+Adapters in this module keep Memento task state durable while allowing a live
 Hermes Kanban board to mirror task cards when it is available.  The JSON adapter
 is dependency-free for local smoke tests; the Hermes CLI adapter talks to the
 real ``hermes kanban`` command through a small injectable runner boundary so
@@ -17,7 +17,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from .domain import SisyphusTask, TaskStatus, utc_now
+from .domain import MementoTask, TaskStatus, utc_now
 
 _STATUS_TO_LANE = {
     TaskStatus.PENDING: "pending",
@@ -59,7 +59,7 @@ class JsonKanbanAdapter:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
-    def create_or_update_task(self, task: SisyphusTask) -> SisyphusTask:
+    def create_or_update_task(self, task: MementoTask) -> MementoTask:
         board = self._read_board()
         cards = [card for card in board["cards"] if card["task"]["id"] != task.id]
         task = replace(task, updated_at=utc_now())
@@ -68,11 +68,11 @@ class JsonKanbanAdapter:
         self._write_board(board)
         return task
 
-    def list_tasks(self, run_id: str) -> list[SisyphusTask]:
+    def list_tasks(self, run_id: str) -> list[MementoTask]:
         cards = [card for card in self._read_board()["cards"] if card["task"].get("run_id") == run_id]
-        return [SisyphusTask.from_record(card["task"]) for card in cards]
+        return [MementoTask.from_record(card["task"]) for card in cards]
 
-    def _card_for(self, task: SisyphusTask) -> dict[str, Any]:
+    def _card_for(self, task: MementoTask) -> dict[str, Any]:
         return {
             "id": f"card_{task.id}",
             "run_id": task.run_id,
@@ -96,7 +96,7 @@ class JsonKanbanAdapter:
 
 
 class HermesKanbanCliAdapter:
-    """Mirror Sisyphus tasks into the real Hermes Kanban CLI.
+    """Mirror Memento tasks into the real Hermes Kanban CLI.
 
     This adapter intentionally uses the public ``hermes kanban`` command instead
     of importing Hermes internals.  It therefore works across Hermes installs,
@@ -123,7 +123,7 @@ class HermesKanbanCliAdapter:
         self._runner = runner or self._subprocess_runner
         self.available = bool(runner) or shutil.which(hermes_command) is not None
 
-    def create_or_update_task(self, task: SisyphusTask) -> SisyphusTask:
+    def create_or_update_task(self, task: MementoTask) -> MementoTask:
         created = self._create_task(task)
         card_id = str(created.get("id") or created.get("task_id") or created.get("task", {}).get("id") or "")
         synced = replace(task, updated_at=utc_now())
@@ -131,18 +131,18 @@ class HermesKanbanCliAdapter:
             self._set_terminal_status(card_id, task.status)
         return synced
 
-    def list_tasks(self, run_id: str) -> list[SisyphusTask]:
+    def list_tasks(self, run_id: str) -> list[MementoTask]:
         result = self._run(["kanban", "list", "--tenant", self.tenant, "--json"])
         cards = self._extract_cards(result)
-        tasks: list[SisyphusTask] = []
+        tasks: list[MementoTask] = []
         for card in cards:
             task = self._task_from_card(card)
             if task is not None and task.run_id == run_id:
                 tasks.append(task)
         return tasks
 
-    def _create_task(self, task: SisyphusTask) -> dict[str, Any]:
-        body = json.dumps({"sisyphus_task": task.to_record()}, sort_keys=True)
+    def _create_task(self, task: MementoTask) -> dict[str, Any]:
+        body = json.dumps({"memento_task": task.to_record()}, sort_keys=True)
         cmd = [
             "kanban",
             "create",
@@ -220,7 +220,7 @@ class HermesKanbanCliAdapter:
             return [result["task"]]
         return []
 
-    def _task_from_card(self, card: dict[str, Any]) -> SisyphusTask | None:
+    def _task_from_card(self, card: dict[str, Any]) -> MementoTask | None:
         for source in (card.get("body"), card.get("description"), card.get("text")):
             if not isinstance(source, str):
                 continue
@@ -228,11 +228,11 @@ class HermesKanbanCliAdapter:
                 parsed = json.loads(source)
             except json.JSONDecodeError:
                 continue
-            record = parsed.get("sisyphus_task") if isinstance(parsed, dict) else None
+            record = parsed.get("memento_task") if isinstance(parsed, dict) else None
             if isinstance(record, dict):
-                return SisyphusTask.from_record(record)
-        if isinstance(card.get("sisyphus_task"), dict):
-            return SisyphusTask.from_record(card["sisyphus_task"])
+                return MementoTask.from_record(record)
+        if isinstance(card.get("memento_task"), dict):
+            return MementoTask.from_record(card["memento_task"])
         return None
 
 

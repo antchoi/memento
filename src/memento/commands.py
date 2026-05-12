@@ -9,22 +9,28 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
+from .context import build_context_bundle, write_context_bundle
 from .domain import (
     Evidence,
     GateKind,
     GateStatus,
     ReviewGate,
     RunStatus,
-    SisyphusPlan,
-    SisyphusRun,
+    MementoPlan,
+    MementoRun,
     TaskStatus,
     utc_now,
 )
 from .events import enqueue_event_task
 from .executors import ExecutorDispatchRequest, OutboxExecutorAdapter
+from .graphify import graph_status, update_graph
 from .kanban import HermesKanbanCliAdapter, JsonKanbanAdapter
+from .memory import LocalMemoryAdapter
+from .routing import registry_snapshot, route_task
 from .state import SQLiteStateStore
+from .verification import evaluate_task
 from .workers import build_worker_payload
+from .worktree import create_isolated_worktree
 
 REQUIRED_COMMANDS = (
     "init",
@@ -46,6 +52,13 @@ REQUIRED_COMMANDS = (
     "claim-dispatch",
     "complete-dispatch",
     "fail-dispatch",
+    "context-bundle",
+    "route-task",
+    "verify-task",
+    "graph-status",
+    "graph-update",
+    "memory-prefetch",
+    "memory-writeback",
 )
 FORBIDDEN_CORE_IMPORT_ROOTS = frozenset({"opencode", "oh_my_openagent"})
 
@@ -144,21 +157,21 @@ def _plugin_registration_smoke() -> dict[str, Any]:
 
 
 def _workspace_writable_check(workspace: Path) -> dict[str, Any]:
-    sisyphus_dir = workspace / ".sisyphus"
-    probe = sisyphus_dir / ".doctor-write-probe"
+    memento_dir = workspace / ".memento"
+    probe = memento_dir / ".doctor-write-probe"
     try:
-        sisyphus_dir.mkdir(parents=True, exist_ok=True)
+        memento_dir.mkdir(parents=True, exist_ok=True)
         probe.write_text("ok", encoding="utf-8")
         probe.unlink(missing_ok=True)
     except Exception as exc:  # pragma: no cover - defensive diagnostic path
         return {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
-    return {"status": "ok", "path": str(sisyphus_dir)}
+    return {"status": "ok", "path": str(memento_dir)}
 
 
 def _runtime_gitignored_check() -> dict[str, Any]:
     gitignore_path = _project_root() / ".gitignore"
     text = gitignore_path.read_text(encoding="utf-8") if gitignore_path.exists() else ""
-    required = (".sisyphus/", ".hermes/runtime/", ".ouroboros/data/", ".ouroboros/runs/")
+    required = (".memento/", ".hermes/runtime/", ".ouroboros/data/", ".ouroboros/runs/")
     missing = [pattern for pattern in required if pattern not in text]
     return {"status": "ok" if not missing else "blocked", "missing": missing}
 
@@ -247,6 +260,8 @@ class CommandService:
         runtime_gitignored = _runtime_gitignored_check()
         bundled_skills = _bundled_skills_check()
         outbox_path = OutboxExecutorAdapter.default_path(workspace)
+        graphify_status = graph_status(workspace)
+        executor_registry = registry_snapshot()
         return {
             "ok": True,
             "command": "doctor",
@@ -267,8 +282,10 @@ class CommandService:
             "runtime_paths": {
                 "state": str(db_path),
                 "executor_outbox": str(outbox_path),
-                "workspace_state_dir": str(workspace / ".sisyphus"),
+                "workspace_state_dir": str(workspace / ".memento"),
             },
+            "graphify": graphify_status,
+            "executor_registry": executor_registry,
             "checks": {
                 "sqlite": "ok" if store.path.exists() else "missing",
                 "kanban": "optional_unavailable_using_sqlite",
@@ -282,6 +299,8 @@ class CommandService:
                 "bundled_skills": bundled_skills["status"],
                 "bundled_skill_count": bundled_skills["count"],
                 "bundled_skill_frontmatter_offenders": bundled_skills["frontmatter_offenders"],
+                "graphify": "ok" if graphify_status["installed"] else "optional_unavailable",
+                "graph_state": graphify_status["state"],
                 "opencode_dependency": "not_required",
                 "opencode_import_scan": import_scan["status"],
                 "core_modules_scanned": import_scan["core_modules_scanned"],
@@ -386,7 +405,7 @@ class CommandService:
             if gate_result is not None:
                 return gate_result
             run = store.set_run_status(run.id, RunStatus.ACTIVE)
-            store.append_audit(run.id, actor="sisyphus_lifecycle_worker", action="run.started")
+            store.append_audit(run.id, actor="memento_lifecycle_worker", action="run.started")
             return {"ok": True, "command": "start", "run": run.to_record()}
 
         goal = str(args.get("goal") or "").strip()
@@ -398,7 +417,7 @@ class CommandService:
         if args.get("allow_spike"):
             store.append_audit(
                 run.id,
-                actor="sisyphus_lifecycle_worker",
+                actor="memento_lifecycle_worker",
                 action="execution.spike_allowed",
                 summary="Bounded spike allowed without canonical plan.",
             )
@@ -408,7 +427,7 @@ class CommandService:
         store = self._store_for(args)
         run_id = str(args["run_id"])
         plan = store.save_plan(
-            SisyphusPlan(
+            MementoPlan(
                 run_id=run_id,
                 title=str(args.get("title") or "Draft plan"),
                 body=str(args.get("body") or ""),
@@ -478,7 +497,7 @@ class CommandService:
             payload["child_process_handles"] = list(args["child_process_handles"])
         store.append_audit(
             run_id,
-            actor="sisyphus_lifecycle_worker",
+            actor="memento_lifecycle_worker",
             action=action,
             summary=str(args.get("reason") or ""),
             payload=payload,
@@ -553,6 +572,12 @@ class CommandService:
         workspace = Path(payload.repo_path)
         executor = str(args.get("executor") or "hermes-profile")
         adapter = OutboxExecutorAdapter(args.get("outbox_path") or OutboxExecutorAdapter.default_path(workspace))
+        worktree = None
+        if args.get("isolated_worktree"):
+            task = store.get_task(payload.task_id)
+            if task is None:
+                return {"ok": False, "error": "task_not_found", "command": "dispatch-task"}
+            worktree = create_isolated_worktree(workspace, task, dry_run=not bool(args.get("create_worktree")))
         dispatch = adapter.dispatch(
             ExecutorDispatchRequest(
                 payload=payload,
@@ -562,7 +587,7 @@ class CommandService:
         )
         store.append_audit(
             payload.run_id,
-            actor="sisyphus_lifecycle_worker",
+            actor="memento_lifecycle_worker",
             action="task.dispatch_queued",
             summary=f"Queued task for {executor}",
             payload={
@@ -571,8 +596,11 @@ class CommandService:
                 "outbox_path": dispatch["outbox_path"],
                 "dispatch_id": dispatch["dispatch_id"],
                 "executor_invoked": False,
+                "worktree": worktree,
             },
         )
+        if worktree is not None:
+            dispatch = {**dispatch, "worktree": worktree}
         return {"command": "dispatch-task", **dispatch}
 
     def list_dispatches(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -642,15 +670,27 @@ class CommandService:
             payload={"dispatch_id": dispatch_id, "evidence_id": evidence.id},
         )
         self._set_task_status(store, run_id, task_id, TaskStatus.COMPLETED)
+        graph_update = None
+        if args.get("graphify_checkpoint"):
+            graph_update = update_graph(
+                store=store,
+                run_id=run_id,
+                workspace=args.get("workspace") or Path.cwd(),
+                changed_files=list(args.get("changed_files") or []),
+                mock=bool(args.get("mock_graphify")),
+            )
         store.append_audit(
             run_id,
-            actor="sisyphus_lifecycle_worker",
+            actor="memento_lifecycle_worker",
             action="task.completed",
             summary=summary,
             payload={"dispatch_id": dispatch_id, "task_id": task_id, "executor_invoked": False},
         )
         completed = adapter.get_dispatch(dispatch_id)
-        return {"ok": True, "command": "complete-dispatch", **completed, "evidence": evidence.to_record()}
+        result = {"ok": True, "command": "complete-dispatch", **completed, "evidence": evidence.to_record()}
+        if graph_update is not None:
+            result["graph_update"] = graph_update
+        return result
 
     def fail_dispatch(self, args: dict[str, Any]) -> dict[str, Any]:
         adapter = self._outbox_adapter_for(args)
@@ -669,7 +709,7 @@ class CommandService:
         store.set_run_status(run_id, RunStatus.BLOCKED)
         store.append_audit(
             run_id,
-            actor="sisyphus_lifecycle_worker",
+            actor="memento_lifecycle_worker",
             action="task.failed",
             summary=reason,
             payload={"dispatch_id": dispatch_id, "task_id": task_id, "executor_invoked": False},
@@ -692,7 +732,7 @@ class CommandService:
     def _execution_gate_result(
         self,
         store: SQLiteStateStore,
-        run: SisyphusRun,
+        run: MementoRun,
         *,
         command: str,
         allow_spike: bool = False,
@@ -700,7 +740,7 @@ class CommandService:
         if not allow_spike and store.canonical_plan(run.id) is None:
             store.append_audit(
                 run.id,
-                actor="sisyphus_lifecycle_worker",
+                actor="memento_lifecycle_worker",
                 action="execution.blocked",
                 summary="Canonical plan required before execution.",
             )
@@ -710,7 +750,7 @@ class CommandService:
             blocked_run = store.set_run_status(run.id, RunStatus.BLOCKED)
             store.append_audit(
                 run.id,
-                actor="sisyphus_lifecycle_worker",
+                actor="memento_lifecycle_worker",
                 action="execution.blocked",
                 summary="Failed review gate blocks execution.",
                 payload={"blocking_gate_ids": [gate["id"] for gate in blocking_gates]},
@@ -748,6 +788,100 @@ class CommandService:
         if task is None:
             return {"ok": False, "error": "task_not_found", "task_id": task_id}
         return {"ok": True, "payload": build_worker_payload(run, task)}
+
+    def context_bundle(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        run = store.get_run(str(args["run_id"]))
+        if run is None:
+            return {"ok": False, "error": "run_not_found", "command": "context-bundle"}
+        task = store.get_task(str(args["task_id"]))
+        if task is None or task.run_id != run.id:
+            return {"ok": False, "error": "task_not_found", "command": "context-bundle"}
+        memory_summary = str(args.get("memory_summary") or "")
+        bundle = build_context_bundle(
+            store=store,
+            run=run,
+            task=task,
+            memory_summary=memory_summary,
+            graph_context={"state": graph_status(run.workspace)["state"]},
+        )
+        bundle_path = write_context_bundle(run.workspace, bundle)
+        evidence = store.save_evidence(
+            Evidence(
+                run_id=run.id,
+                kind="context_bundle",
+                type="artifact",
+                summary=f"Context bundle generated for {task.title}",
+                uri=str(bundle_path),
+                task_id=task.id,
+                content_ref={"kind": "file", "uri": str(bundle_path), "sha256": bundle["bundle_hash"]},
+            )
+        )
+        return {
+            "ok": True,
+            "command": "context-bundle",
+            "bundle": bundle,
+            "bundle_path": str(bundle_path),
+            "evidence": evidence.to_record(),
+        }
+
+    def route_task(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        task = store.get_task(str(args["task_id"]))
+        if task is None:
+            return {"ok": False, "error": "task_not_found", "command": "route-task"}
+        decision = route_task(
+            task,
+            graph_state=graph_status(args.get("workspace") or Path.cwd())["state"],
+            requested_executor=args.get("executor"),
+        )
+        evidence = store.save_evidence(
+            Evidence(
+                run_id=task.run_id,
+                kind="routing_decision",
+                type="routing_decision",
+                summary=f"Route preview selected {decision['selected_executor']}",
+                task_id=task.id,
+                trust_level="trusted",
+                content_ref={"kind": "inline", "decision": decision},
+            )
+        )
+        return {"ok": True, "command": "route-task", "decision": decision, "evidence": evidence.to_record()}
+
+    def verify_task(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        task = store.get_task(str(args["task_id"]))
+        if task is None:
+            return {"ok": False, "error": "task_not_found", "command": "verify-task"}
+        verdict = evaluate_task(store, task)
+        return {"ok": True, "command": "verify-task", **verdict}
+
+    def graph_status(self, args: dict[str, Any]) -> dict[str, Any]:
+        return {"ok": True, "command": "graph-status", "graphify": graph_status(args.get("workspace") or Path.cwd())}
+
+    def graph_update(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        run_id = str(args["run_id"])
+        return {
+            "command": "graph-update",
+            **update_graph(
+                store=store,
+                run_id=run_id,
+                workspace=args.get("workspace") or Path.cwd(),
+                changed_files=list(args.get("changed_files") or []),
+                mock=bool(args.get("mock_graphify")),
+            ),
+        }
+
+    def memory_prefetch(self, args: dict[str, Any]) -> dict[str, Any]:
+        adapter = LocalMemoryAdapter()
+        result = adapter.recall(str(args.get("query") or args.get("goal") or ""))
+        return {"ok": True, "command": "memory-prefetch", "memory": result}
+
+    def memory_writeback(self, args: dict[str, Any]) -> dict[str, Any]:
+        adapter = LocalMemoryAdapter()
+        result = adapter.save_lesson(str(args.get("lesson") or args.get("summary") or ""))
+        return {"ok": True, "command": "memory-writeback", **result}
 
     def add_evidence(self, run_id: str, *, kind: str, summary: str, uri: str | None = None) -> Evidence:
         store = self._store_for({})

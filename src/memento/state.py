@@ -1,4 +1,4 @@
-"""Durable local fallback state for Sisyphus Hermes.
+"""Durable local fallback state for Memento.
 
 The store intentionally uses only the Python standard library so core tests do
 not depend on Hermes Kanban, OpenCode, or any external service.
@@ -18,9 +18,10 @@ from .domain import (
     PlanStatus,
     ReviewGate,
     RunStatus,
-    SisyphusPlan,
-    SisyphusRun,
-    SisyphusTask,
+    MementoPlan,
+    MementoRun,
+    MementoTask,
+    TaskStatus,
     utc_now,
 )
 
@@ -36,10 +37,10 @@ class KanbanAdapter(Protocol):
 
     available: bool
 
-    def create_or_update_task(self, task: SisyphusTask) -> SisyphusTask:
-        """Persist a Sisyphus task in Kanban-compatible storage."""
+    def create_or_update_task(self, task: MementoTask) -> MementoTask:
+        """Persist a Memento task in Kanban-compatible storage."""
 
-    def list_tasks(self, run_id: str) -> list[SisyphusTask]:
+    def list_tasks(self, run_id: str) -> list[MementoTask]:
         """Return Kanban-backed tasks for a run."""
 
 
@@ -48,17 +49,17 @@ class UnavailableKanbanAdapter:
 
     available = False
 
-    def create_or_update_task(self, task: SisyphusTask) -> SisyphusTask:
+    def create_or_update_task(self, task: MementoTask) -> MementoTask:
         raise RuntimeError("Hermes Kanban is unavailable")
 
-    def list_tasks(self, run_id: str) -> list[SisyphusTask]:
+    def list_tasks(self, run_id: str) -> list[MementoTask]:
         raise RuntimeError("Hermes Kanban is unavailable")
 
 
 _TABLE_MODELS = {
-    "runs": SisyphusRun,
-    "plans": SisyphusPlan,
-    "tasks": SisyphusTask,
+    "runs": MementoRun,
+    "plans": MementoPlan,
+    "tasks": MementoTask,
     "gates": ReviewGate,
     "evidence": Evidence,
     "audit": AuditEvent,
@@ -102,7 +103,7 @@ class SQLiteStateStore:
 
     @staticmethod
     def default_path(workspace: str | Path) -> Path:
-        return Path(workspace) / ".sisyphus" / "state.sqlite3"
+        return Path(workspace) / ".memento" / "state.sqlite3"
 
     def _save(self, table: str, entity: Any, *, run_id: str | None = None) -> Any:
         record = entity.to_record()
@@ -146,46 +147,92 @@ class SQLiteStateStore:
         model = _TABLE_MODELS[table]
         return [model.from_record(json.loads(row["record_json"])) for row in rows]
 
-    def create_run(self, *, goal: str, workspace: str, actor: str = "founder_user") -> SisyphusRun:
-        run = SisyphusRun(goal=goal, workspace=workspace, actor=actor, source_of_truth=self.source_of_truth)
+    def create_run(self, *, goal: str, workspace: str, actor: str = "founder_user") -> MementoRun:
+        run = MementoRun(goal=goal, workspace=workspace, actor=actor, source_of_truth=self.source_of_truth)
         return self._save("runs", run, run_id=run.id)
 
-    def save_run(self, run: SisyphusRun) -> SisyphusRun:
+    def save_run(self, run: MementoRun) -> MementoRun:
         return self._save("runs", run, run_id=run.id)
 
-    def get_run(self, run_id: str) -> SisyphusRun | None:
+    def get_run(self, run_id: str) -> MementoRun | None:
         return self._get("runs", run_id)
 
-    def latest_run(self) -> SisyphusRun | None:
+    def latest_run(self) -> MementoRun | None:
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT record_json FROM runs ORDER BY created_at DESC, id DESC LIMIT 1"
             ).fetchone()
-        return SisyphusRun.from_record(json.loads(row["record_json"])) if row else None
+        return MementoRun.from_record(json.loads(row["record_json"])) if row else None
 
-    def save_plan(self, plan: SisyphusPlan) -> SisyphusPlan:
+    def save_plan(self, plan: MementoPlan) -> MementoPlan:
         return self._save("plans", plan)
 
-    def get_plan(self, plan_id: str) -> SisyphusPlan | None:
+    def save_plan_for_test(self, run_id: str, *, title: str, body: str) -> MementoPlan:
+        """Small test helper that keeps public CLI code uncluttered."""
+
+        return self.save_plan(MementoPlan(run_id=run_id, title=title, body=body))
+
+    def get_plan(self, plan_id: str) -> MementoPlan | None:
         return self._get("plans", plan_id)
 
-    def list_plans(self, run_id: str) -> list[SisyphusPlan]:
+    def list_plans(self, run_id: str) -> list[MementoPlan]:
         return self._list("plans", run_id)
 
-    def canonical_plan(self, run_id: str) -> SisyphusPlan | None:
+    def canonical_plan(self, run_id: str) -> MementoPlan | None:
         return next((p for p in self.list_plans(run_id) if p.status == PlanStatus.CANONICAL), None)
 
-    def save_task(self, task: SisyphusTask) -> SisyphusTask:
+    def save_task(self, task: MementoTask) -> MementoTask:
         saved = self._save("tasks", task)
         if self.kanban.available:
             saved = self.kanban.create_or_update_task(saved)
             self._save("tasks", saved)
         return saved
 
-    def list_tasks(self, run_id: str) -> list[SisyphusTask]:
+    def get_task(self, task_id: str) -> MementoTask | None:
+        return self._get("tasks", task_id)
+
+    def list_tasks(self, run_id: str) -> list[MementoTask]:
         if self.kanban.available:
             return self.kanban.list_tasks(run_id)
         return self._list("tasks", run_id)
+
+    def validate_task_graph(self, run_id: str) -> dict[str, Any]:
+        tasks = {task.id: task for task in self.list_tasks(run_id)}
+        errors: list[dict[str, Any]] = []
+        for task in tasks.values():
+            for dep in task.dependencies:
+                if dep not in tasks:
+                    errors.append({"task_id": task.id, "error": "missing_dependency", "dependency": dep})
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(task_id: str, trail: tuple[str, ...] = ()) -> None:
+            if task_id in visiting:
+                errors.append({"task_id": task_id, "error": "dependency_cycle", "cycle": [*trail, task_id]})
+                return
+            if task_id in visited or task_id not in tasks:
+                return
+            visiting.add(task_id)
+            for dep in tasks[task_id].dependencies:
+                visit(dep, (*trail, task_id))
+            visiting.remove(task_id)
+            visited.add(task_id)
+
+        for task_id in tasks:
+            visit(task_id)
+        return {"ok": not errors, "errors": errors, "task_count": len(tasks)}
+
+    def ready_tasks(self, run_id: str) -> list[MementoTask]:
+        tasks = {task.id: task for task in self.list_tasks(run_id)}
+        ready: list[MementoTask] = []
+        for task in tasks.values():
+            if task.status not in {TaskStatus.PENDING, TaskStatus.READY}:
+                continue
+            if not task.acceptance_criteria or not task.verification_policy:
+                continue
+            if all(tasks.get(dep) and tasks[dep].status in {TaskStatus.ACCEPTED, TaskStatus.COMPLETED} for dep in task.dependencies):
+                ready.append(task)
+        return ready
 
     def save_gate(self, gate: ReviewGate) -> ReviewGate:
         return self._save("gates", gate)
@@ -194,10 +241,42 @@ class SQLiteStateStore:
         return self._list("gates", run_id)
 
     def save_evidence(self, evidence: Evidence) -> Evidence:
+        if evidence.type is None:
+            evidence = replace(evidence, type=evidence.kind)
         return self._save("evidence", evidence)
+
+    def get_evidence(self, evidence_id: str) -> Evidence | None:
+        return self._get("evidence", evidence_id)
 
     def list_evidence(self, run_id: str) -> list[Evidence]:
         return self._list("evidence", run_id)
+
+    def supersede_evidence(self, evidence_id: str, *, summary: str, status: str) -> Evidence:
+        old = self.get_evidence(evidence_id)
+        if old is None:
+            raise KeyError(f"evidence not found: {evidence_id}")
+        relationships = dict(old.relationships)
+        supersedes = list(relationships.get("supersedes") or [])
+        supersedes.append(old.id)
+        relationships["supersedes"] = supersedes
+        return self.save_evidence(
+            Evidence(
+                run_id=old.run_id,
+                kind=old.kind,
+                type=old.type,
+                summary=summary,
+                uri=old.uri,
+                task_id=old.task_id,
+                trust_level=old.trust_level,
+                status=status,
+                source=old.source,
+                content_ref=old.content_ref,
+                relationships=relationships,
+                dispatch_id=old.dispatch_id,
+                plan_id=old.plan_id,
+                decision_id=old.decision_id,
+            )
+        )
 
     def append_audit(
         self,
@@ -216,7 +295,7 @@ class SQLiteStateStore:
     def list_audit(self, run_id: str) -> list[AuditEvent]:
         return self._list("audit", run_id)
 
-    def set_run_status(self, run_id: str, status: RunStatus, *, current_plan_id: str | None = None) -> SisyphusRun:
+    def set_run_status(self, run_id: str, status: RunStatus, *, current_plan_id: str | None = None) -> MementoRun:
         run = self.get_run(run_id)
         if run is None:
             raise KeyError(f"run not found: {run_id}")
@@ -228,7 +307,7 @@ class SQLiteStateStore:
         )
         return self.save_run(updated)
 
-    def approve_plan(self, run_id: str, plan_id: str) -> SisyphusPlan:
+    def approve_plan(self, run_id: str, plan_id: str) -> MementoPlan:
         plan = self.get_plan(plan_id)
         if plan is None or plan.run_id != run_id:
             raise KeyError(f"plan not found for run: {plan_id}")
