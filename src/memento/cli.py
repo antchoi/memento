@@ -29,6 +29,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--body", help="Plan body.")
     parser.add_argument("--reason", help="Pause/resume/cancel reason.")
     parser.add_argument("--allow-spike", action="store_true", help="Allow bounded spike without canonical plan.")
+    parser.add_argument("--query", help="Memory or graph query text.")
+    parser.add_argument("--lesson", help="Durable memory lesson candidate.")
+    parser.add_argument("--mock-graphify", action="store_true", help="Use mock Graphify update for tests/smoke.")
     args = parser.parse_args(argv)
 
     payload = {
@@ -46,6 +49,9 @@ def main(argv: list[str] | None = None) -> int:
         "body": args.body,
         "reason": args.reason,
         "allow_spike": args.allow_spike,
+        "query": args.query,
+        "lesson": args.lesson,
+        "mock_graphify": args.mock_graphify,
     }
     payload = {k: v for k, v in payload.items() if v not in (None, False)}
     result = CommandService().handler_for(args.command)(payload)

@@ -21,6 +21,7 @@ from .domain import (
     SisyphusPlan,
     SisyphusRun,
     SisyphusTask,
+    TaskStatus,
     utc_now,
 )
 
@@ -166,6 +167,11 @@ class SQLiteStateStore:
     def save_plan(self, plan: SisyphusPlan) -> SisyphusPlan:
         return self._save("plans", plan)
 
+    def save_plan_for_test(self, run_id: str, *, title: str, body: str) -> SisyphusPlan:
+        """Small test helper that keeps public CLI code uncluttered."""
+
+        return self.save_plan(SisyphusPlan(run_id=run_id, title=title, body=body))
+
     def get_plan(self, plan_id: str) -> SisyphusPlan | None:
         return self._get("plans", plan_id)
 
@@ -182,10 +188,51 @@ class SQLiteStateStore:
             self._save("tasks", saved)
         return saved
 
+    def get_task(self, task_id: str) -> SisyphusTask | None:
+        return self._get("tasks", task_id)
+
     def list_tasks(self, run_id: str) -> list[SisyphusTask]:
         if self.kanban.available:
             return self.kanban.list_tasks(run_id)
         return self._list("tasks", run_id)
+
+    def validate_task_graph(self, run_id: str) -> dict[str, Any]:
+        tasks = {task.id: task for task in self.list_tasks(run_id)}
+        errors: list[dict[str, Any]] = []
+        for task in tasks.values():
+            for dep in task.dependencies:
+                if dep not in tasks:
+                    errors.append({"task_id": task.id, "error": "missing_dependency", "dependency": dep})
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(task_id: str, trail: tuple[str, ...] = ()) -> None:
+            if task_id in visiting:
+                errors.append({"task_id": task_id, "error": "dependency_cycle", "cycle": [*trail, task_id]})
+                return
+            if task_id in visited or task_id not in tasks:
+                return
+            visiting.add(task_id)
+            for dep in tasks[task_id].dependencies:
+                visit(dep, (*trail, task_id))
+            visiting.remove(task_id)
+            visited.add(task_id)
+
+        for task_id in tasks:
+            visit(task_id)
+        return {"ok": not errors, "errors": errors, "task_count": len(tasks)}
+
+    def ready_tasks(self, run_id: str) -> list[SisyphusTask]:
+        tasks = {task.id: task for task in self.list_tasks(run_id)}
+        ready: list[SisyphusTask] = []
+        for task in tasks.values():
+            if task.status not in {TaskStatus.PENDING, TaskStatus.READY}:
+                continue
+            if not task.acceptance_criteria or not task.verification_policy:
+                continue
+            if all(tasks.get(dep) and tasks[dep].status in {TaskStatus.ACCEPTED, TaskStatus.COMPLETED} for dep in task.dependencies):
+                ready.append(task)
+        return ready
 
     def save_gate(self, gate: ReviewGate) -> ReviewGate:
         return self._save("gates", gate)
@@ -194,10 +241,42 @@ class SQLiteStateStore:
         return self._list("gates", run_id)
 
     def save_evidence(self, evidence: Evidence) -> Evidence:
+        if evidence.type is None:
+            evidence = replace(evidence, type=evidence.kind)
         return self._save("evidence", evidence)
+
+    def get_evidence(self, evidence_id: str) -> Evidence | None:
+        return self._get("evidence", evidence_id)
 
     def list_evidence(self, run_id: str) -> list[Evidence]:
         return self._list("evidence", run_id)
+
+    def supersede_evidence(self, evidence_id: str, *, summary: str, status: str) -> Evidence:
+        old = self.get_evidence(evidence_id)
+        if old is None:
+            raise KeyError(f"evidence not found: {evidence_id}")
+        relationships = dict(old.relationships)
+        supersedes = list(relationships.get("supersedes") or [])
+        supersedes.append(old.id)
+        relationships["supersedes"] = supersedes
+        return self.save_evidence(
+            Evidence(
+                run_id=old.run_id,
+                kind=old.kind,
+                type=old.type,
+                summary=summary,
+                uri=old.uri,
+                task_id=old.task_id,
+                trust_level=old.trust_level,
+                status=status,
+                source=old.source,
+                content_ref=old.content_ref,
+                relationships=relationships,
+                dispatch_id=old.dispatch_id,
+                plan_id=old.plan_id,
+                decision_id=old.decision_id,
+            )
+        )
 
     def append_audit(
         self,

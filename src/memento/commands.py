@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
+from .context import build_context_bundle, write_context_bundle
 from .domain import (
     Evidence,
     GateKind,
@@ -22,8 +23,12 @@ from .domain import (
 )
 from .events import enqueue_event_task
 from .executors import ExecutorDispatchRequest, OutboxExecutorAdapter
+from .graphify import graph_status, update_graph
 from .kanban import HermesKanbanCliAdapter, JsonKanbanAdapter
+from .memory import LocalMemoryAdapter
+from .routing import registry_snapshot, route_task
 from .state import SQLiteStateStore
+from .verification import evaluate_task
 from .workers import build_worker_payload
 
 REQUIRED_COMMANDS = (
@@ -46,6 +51,13 @@ REQUIRED_COMMANDS = (
     "claim-dispatch",
     "complete-dispatch",
     "fail-dispatch",
+    "context-bundle",
+    "route-task",
+    "verify-task",
+    "graph-status",
+    "graph-update",
+    "memory-prefetch",
+    "memory-writeback",
 )
 FORBIDDEN_CORE_IMPORT_ROOTS = frozenset({"opencode", "oh_my_openagent"})
 
@@ -247,6 +259,8 @@ class CommandService:
         runtime_gitignored = _runtime_gitignored_check()
         bundled_skills = _bundled_skills_check()
         outbox_path = OutboxExecutorAdapter.default_path(workspace)
+        graphify_status = graph_status(workspace)
+        executor_registry = registry_snapshot()
         return {
             "ok": True,
             "command": "doctor",
@@ -269,6 +283,8 @@ class CommandService:
                 "executor_outbox": str(outbox_path),
                 "workspace_state_dir": str(workspace / ".sisyphus"),
             },
+            "graphify": graphify_status,
+            "executor_registry": executor_registry,
             "checks": {
                 "sqlite": "ok" if store.path.exists() else "missing",
                 "kanban": "optional_unavailable_using_sqlite",
@@ -282,6 +298,8 @@ class CommandService:
                 "bundled_skills": bundled_skills["status"],
                 "bundled_skill_count": bundled_skills["count"],
                 "bundled_skill_frontmatter_offenders": bundled_skills["frontmatter_offenders"],
+                "graphify": "ok" if graphify_status["installed"] else "optional_unavailable",
+                "graph_state": graphify_status["state"],
                 "opencode_dependency": "not_required",
                 "opencode_import_scan": import_scan["status"],
                 "core_modules_scanned": import_scan["core_modules_scanned"],
@@ -748,6 +766,96 @@ class CommandService:
         if task is None:
             return {"ok": False, "error": "task_not_found", "task_id": task_id}
         return {"ok": True, "payload": build_worker_payload(run, task)}
+
+    def context_bundle(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        run = store.get_run(str(args["run_id"]))
+        if run is None:
+            return {"ok": False, "error": "run_not_found", "command": "context-bundle"}
+        task = store.get_task(str(args["task_id"]))
+        if task is None or task.run_id != run.id:
+            return {"ok": False, "error": "task_not_found", "command": "context-bundle"}
+        memory_summary = str(args.get("memory_summary") or "")
+        bundle = build_context_bundle(
+            store=store,
+            run=run,
+            task=task,
+            memory_summary=memory_summary,
+            graph_context={"state": graph_status(run.workspace)["state"]},
+        )
+        bundle_path = write_context_bundle(run.workspace, bundle)
+        evidence = store.save_evidence(
+            Evidence(
+                run_id=run.id,
+                kind="context_bundle",
+                type="artifact",
+                summary=f"Context bundle generated for {task.title}",
+                uri=str(bundle_path),
+                task_id=task.id,
+                content_ref={"kind": "file", "uri": str(bundle_path), "sha256": bundle["bundle_hash"]},
+            )
+        )
+        return {
+            "ok": True,
+            "command": "context-bundle",
+            "bundle": bundle,
+            "bundle_path": str(bundle_path),
+            "evidence": evidence.to_record(),
+        }
+
+    def route_task(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        task = store.get_task(str(args["task_id"]))
+        if task is None:
+            return {"ok": False, "error": "task_not_found", "command": "route-task"}
+        decision = route_task(task, graph_state=graph_status(args.get("workspace") or Path.cwd())["state"])
+        evidence = store.save_evidence(
+            Evidence(
+                run_id=task.run_id,
+                kind="routing_decision",
+                type="routing_decision",
+                summary=f"Route preview selected {decision['selected_executor']}",
+                task_id=task.id,
+                trust_level="trusted",
+                content_ref={"kind": "inline", "decision": decision},
+            )
+        )
+        return {"ok": True, "command": "route-task", "decision": decision, "evidence": evidence.to_record()}
+
+    def verify_task(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        task = store.get_task(str(args["task_id"]))
+        if task is None:
+            return {"ok": False, "error": "task_not_found", "command": "verify-task"}
+        verdict = evaluate_task(store, task)
+        return {"ok": True, "command": "verify-task", **verdict}
+
+    def graph_status(self, args: dict[str, Any]) -> dict[str, Any]:
+        return {"ok": True, "command": "graph-status", "graphify": graph_status(args.get("workspace") or Path.cwd())}
+
+    def graph_update(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        run_id = str(args["run_id"])
+        return {
+            "command": "graph-update",
+            **update_graph(
+                store=store,
+                run_id=run_id,
+                workspace=args.get("workspace") or Path.cwd(),
+                changed_files=list(args.get("changed_files") or []),
+                mock=bool(args.get("mock_graphify")),
+            ),
+        }
+
+    def memory_prefetch(self, args: dict[str, Any]) -> dict[str, Any]:
+        adapter = LocalMemoryAdapter()
+        result = adapter.recall(str(args.get("query") or args.get("goal") or ""))
+        return {"ok": True, "command": "memory-prefetch", "memory": result}
+
+    def memory_writeback(self, args: dict[str, Any]) -> dict[str, Any]:
+        adapter = LocalMemoryAdapter()
+        result = adapter.save_lesson(str(args.get("lesson") or args.get("summary") or ""))
+        return {"ok": True, "command": "memory-writeback", **result}
 
     def add_evidence(self, run_id: str, *, kind: str, summary: str, uri: str | None = None) -> Evidence:
         store = self._store_for({})

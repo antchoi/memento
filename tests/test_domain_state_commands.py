@@ -108,7 +108,14 @@ def test_command_surface_has_all_required_handlers(tmp_path: Path) -> None:
         "list-dispatches",
         "claim-dispatch",
         "complete-dispatch",
-        "fail-dispatch",
+            "fail-dispatch",
+            "context-bundle",
+            "route-task",
+            "verify-task",
+            "graph-status",
+            "graph-update",
+            "memory-prefetch",
+            "memory-writeback",
     }
     assert set(command_names()) == expected
 

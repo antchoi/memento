@@ -38,7 +38,12 @@ class PlanStatus(StrEnum):
 class TaskStatus(StrEnum):
     PENDING = "pending"
     READY = "ready"
+    CLAIMED = "claimed"
     IN_PROGRESS = "in_progress"
+    SUBMITTED = "submitted"
+    VERIFYING = "verifying"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
     BLOCKED = "blocked"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
@@ -90,7 +95,15 @@ class RecordModel:
             enum_type = enum_types[name]
             if name in kwargs and not isinstance(kwargs[name], enum_type):
                 kwargs[name] = enum_type(kwargs[name])
-        for name in ("assumptions", "risks", "acceptance_criteria"):
+        for name in (
+            "assumptions",
+            "risks",
+            "acceptance_criteria",
+            "dependencies",
+            "context_refs",
+            "dispatch_refs",
+            "evidence_refs",
+        ):
             if isinstance(kwargs.get(name), list):
                 kwargs[name] = tuple(kwargs[name])
         return cls(**kwargs)
@@ -135,6 +148,16 @@ class SisyphusTask(RecordModel):
     status: TaskStatus = TaskStatus.PENDING
     acceptance_criteria: tuple[str, ...] = ()
     role: str = "hephaestus_executor"
+    parent_id: str | None = None
+    freshness: str = "current"
+    dependencies: tuple[str, ...] = ()
+    verification_policy: dict[str, Any] = field(default_factory=dict)
+    context_refs: tuple[str, ...] = ()
+    dispatch_refs: tuple[str, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+    kind: str = "implementation"
+    risk: str = "medium"
+    size: str = "m"
     id: str = field(default_factory=lambda: new_id("task"))
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
@@ -163,9 +186,33 @@ class Evidence(RecordModel):
     summary: str
     uri: str | None = None
     task_id: str | None = None
+    type: str | None = None
+    trust_level: str = "trusted"
+    status: str = "observed"
+    source: dict[str, Any] = field(default_factory=lambda: {"kind": "hermes"})
+    content_ref: dict[str, Any] = field(default_factory=dict)
+    relationships: dict[str, Any] = field(default_factory=dict)
+    dispatch_id: str | None = None
+    plan_id: str | None = None
+    decision_id: str | None = None
     id: str = field(default_factory=lambda: new_id("evidence"))
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
+
+    def __post_init__(self) -> None:
+        if self.type is None:
+            object.__setattr__(self, "type", self.kind)
+
+    def to_record(self) -> dict[str, Any]:
+        record = super().to_record()
+        record["type"] = record.get("type") or record.get("kind")
+        return record
+
+    @classmethod
+    def from_record(cls, record: dict[str, Any]) -> Self:
+        payload = dict(record)
+        payload.setdefault("type", payload.get("kind"))
+        return super().from_record(payload)
 
 
 @dataclass(frozen=True, kw_only=True)

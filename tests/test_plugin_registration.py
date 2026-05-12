@@ -47,7 +47,14 @@ def test_register_adds_full_command_surface_with_metadata_and_structured_result(
         "memento.list-dispatches",
         "memento.claim-dispatch",
         "memento.complete-dispatch",
-        "memento.fail-dispatch",
+            "memento.fail-dispatch",
+            "memento.context-bundle",
+            "memento.route-task",
+            "memento.verify-task",
+            "memento.graph-status",
+            "memento.graph-update",
+            "memento.memory-prefetch",
+            "memento.memory-writeback",
     }
     assert result["ok"] is True
     assert result["plugin"] == "memento"

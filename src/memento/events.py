@@ -42,6 +42,13 @@ def enqueue_event_task(store: SQLiteStateStore, payload: dict[str, Any]) -> Even
         acceptance_criteria = tuple(acceptance_criteria_raw)
     role = str(payload.get("role") or "hephaestus_executor")
     source = str(payload.get("source") or "event")
+    dependencies_raw = payload.get("dependencies") or ()
+    dependencies = (dependencies_raw,) if isinstance(dependencies_raw, str) else tuple(dependencies_raw)
+    context_refs_raw = payload.get("context_refs") or payload.get("files_expected") or ()
+    context_refs = (context_refs_raw,) if isinstance(context_refs_raw, str) else tuple(context_refs_raw)
+    verification_policy = dict(payload.get("verification_policy") or {})
+    if acceptance_criteria and not verification_policy:
+        verification_policy = {"required_evidence": ["dispatch_result"]}
 
     task = store.save_task(
         SisyphusTask(
@@ -51,6 +58,12 @@ def enqueue_event_task(store: SQLiteStateStore, payload: dict[str, Any]) -> Even
             status=TaskStatus.PENDING,
             acceptance_criteria=acceptance_criteria,
             role=role,
+            dependencies=dependencies,
+            context_refs=context_refs,
+            verification_policy=verification_policy,
+            kind=str(payload.get("kind") or "implementation"),
+            risk=str(payload.get("risk") or "medium"),
+            size=str(payload.get("size") or "m"),
         )
     )
     store.append_audit(
