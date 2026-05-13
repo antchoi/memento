@@ -109,11 +109,12 @@ def route_task(
         if name == "swe-agent" and not sandbox_available:
             rejected[name] = {"reason": "sandbox_required_unavailable"}
             continue
+        if record["health"] == "unavailable" and name != "hermes-direct":
+            rejected[name] = {"reason": "executor_unavailable"}
+            continue
         score = 10
         if task.kind in capability.preferred_task_kinds:
             score += 10
-        if record["health"] == "unavailable" and name != "hermes-direct":
-            score -= 3
         if task.risk == "high" and name != "hermes-direct":
             score -= 5
         if graph_state in {"stale", "update_failed"}:

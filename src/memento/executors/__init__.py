@@ -222,7 +222,57 @@ class PeerExecutorAdapter:
                 "executor_invoked": False,
                 "error": f"failed_to_invoke_executor: {type(exc).__name__}: {exc}",
             }
-        return {**result, "executor_invoked": True, "process": run_result}
+        execution = self._classify_execution(run_result)
+        return {**result, "executor_invoked": True, "process": run_result, "execution": execution}
+
+    def _classify_execution(self, run_result: dict[str, Any]) -> dict[str, Any]:
+        """Classify a peer executor result using trusted evidence, not self-report."""
+
+        changed_files = list(run_result.get("changed_files") or [])
+        verification = run_result.get("verification")
+        if not isinstance(verification, dict):
+            verification = {"ok": False, "reason": "no_verification_result"}
+
+        if run_result.get("timeout"):
+            return {
+                "status": "timeout",
+                "accepted": False,
+                "failure_category": "timeout",
+                "changed_files": changed_files,
+                "verification": verification,
+            }
+        exit_code = run_result.get("exit_code")
+        if exit_code not in (None, 0):
+            return {
+                "status": "process_failed",
+                "accepted": False,
+                "failure_category": "process_failed",
+                "changed_files": changed_files,
+                "verification": verification,
+                "exit_code": exit_code,
+            }
+        if not changed_files:
+            return {
+                "status": "no_changes",
+                "accepted": False,
+                "failure_category": "no_changes",
+                "changed_files": [],
+                "verification": verification,
+            }
+        if verification.get("ok") is not True:
+            return {
+                "status": "verification_failed",
+                "accepted": False,
+                "failure_category": "verification_failed",
+                "changed_files": changed_files,
+                "verification": verification,
+            }
+        return {
+            "status": "verified",
+            "accepted": True,
+            "changed_files": changed_files,
+            "verification": verification,
+        }
 
     def command_for(self, request: ExecutorDispatchRequest) -> list[str]:
         payload = request.payload

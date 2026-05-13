@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from memento.budget import evaluate_budget
 from memento.domain import Evidence, MementoRun, MementoTask, TaskStatus
 from memento.executors import ExecutorDispatchRequest, PeerExecutorAdapter
@@ -15,7 +17,8 @@ from memento.verification_enrichment import enrich_verification_policy
 from memento.workers import build_worker_payload
 
 
-def test_goose_and_swe_agent_commands_are_capability_gated() -> None:
+def test_goose_and_swe_agent_commands_are_capability_gated(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("memento.routing.shutil.which", lambda command: f"/bin/{command}")
     assert DEFAULT_EXECUTORS["goose"].experimental is True
     assert DEFAULT_EXECUTORS["swe-agent"].preferred_task_kinds == ("issue_repair", "test_driven_fix")
 

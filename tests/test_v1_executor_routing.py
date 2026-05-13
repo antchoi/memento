@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from memento.commands import CommandService
 from memento.domain import MementoTask
 from memento.executors import ExecutorDispatchRequest, PeerExecutorAdapter
@@ -46,7 +48,78 @@ def test_peer_executor_builds_codex_and_aider_commands(tmp_path: Path) -> None:
     assert "--message" in aider
 
 
-def test_route_override_preserves_hard_safety(tmp_path: Path) -> None:
+def test_peer_executor_classifies_successful_verified_changes(tmp_path: Path) -> None:
+    store, run_id, task_id = _run_with_task(tmp_path)
+    payload = build_worker_payload(store.get_run(run_id), store.get_task(task_id))
+
+    def runner(_command: list[str], _cwd: Path) -> dict[str, object]:
+        return {
+            "exit_code": 0,
+            "stdout": "changed src/app.py",
+            "stderr": "",
+            "changed_files": ["src/app.py"],
+            "verification": {"ok": True, "commands": ["python -m pytest -q"]},
+        }
+
+    result = PeerExecutorAdapter(runner=runner).dispatch(
+        ExecutorDispatchRequest(payload=payload, executor="codex", invoke=True)
+    )
+
+    assert result["ok"] is True
+    assert result["executor_invoked"] is True
+    assert result["execution"]["status"] == "verified"
+    assert result["execution"]["accepted"] is True
+    assert result["execution"]["changed_files"] == ["src/app.py"]
+    assert result["execution"]["verification"]["ok"] is True
+
+
+def test_peer_executor_rejects_no_change_self_reports(tmp_path: Path) -> None:
+    store, run_id, task_id = _run_with_task(tmp_path)
+    payload = build_worker_payload(store.get_run(run_id), store.get_task(task_id))
+
+    def runner(_command: list[str], _cwd: Path) -> dict[str, object]:
+        return {"exit_code": 0, "stdout": "I completed it", "stderr": "", "changed_files": []}
+
+    result = PeerExecutorAdapter(runner=runner).dispatch(
+        ExecutorDispatchRequest(payload=payload, executor="aider", invoke=True)
+    )
+
+    assert result["ok"] is True
+    assert result["executor_invoked"] is True
+    assert result["execution"] == {
+        "status": "no_changes",
+        "accepted": False,
+        "failure_category": "no_changes",
+        "changed_files": [],
+        "verification": {"ok": False, "reason": "no_verification_result"},
+    }
+
+
+def test_peer_executor_classifies_timeout_and_verification_failure(tmp_path: Path) -> None:
+    store, run_id, task_id = _run_with_task(tmp_path)
+    payload = build_worker_payload(store.get_run(run_id), store.get_task(task_id))
+
+    timeout = PeerExecutorAdapter(runner=lambda _command, _cwd: {"timeout": True}).dispatch(
+        ExecutorDispatchRequest(payload=payload, executor="codex", invoke=True)
+    )
+    assert timeout["execution"]["status"] == "timeout"
+    assert timeout["execution"]["accepted"] is False
+    assert timeout["execution"]["failure_category"] == "timeout"
+
+    verification_failed = PeerExecutorAdapter(
+        runner=lambda _command, _cwd: {
+            "exit_code": 0,
+            "changed_files": ["src/app.py"],
+            "verification": {"ok": False, "failed_commands": ["python -m pytest -q"]},
+        }
+    ).dispatch(ExecutorDispatchRequest(payload=payload, executor="goose", invoke=True))
+    assert verification_failed["execution"]["status"] == "verification_failed"
+    assert verification_failed["execution"]["accepted"] is False
+    assert verification_failed["execution"]["failure_category"] == "verification_failed"
+
+
+def test_route_override_preserves_hard_safety(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("memento.routing.shutil.which", lambda command: f"/bin/{command}")
     _store, run_id, task_id = _run_with_task(tmp_path)
     svc = CommandService()
     blocked = svc.route_task(
@@ -59,6 +132,29 @@ def test_route_override_preserves_hard_safety(tmp_path: Path) -> None:
     honored = svc.route_task({"workspace": str(tmp_path), "run_id": run_id, "task_id": task_id, "executor": "aider"})
     assert honored["decision"]["user_override"]["honored"] is True
     assert honored["decision"]["selected_executor"] == "aider"
+
+
+def test_unavailable_external_executors_are_not_selected_or_honored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("memento.routing.shutil.which", lambda _command: None)
+    _store, run_id, task_id = _run_with_task(tmp_path)
+    svc = CommandService()
+
+    route = svc.route_task({"workspace": str(tmp_path), "run_id": run_id, "task_id": task_id})
+    assert route["ok"] is True
+    assert route["decision"]["selected_executor"] == "hermes-direct"
+    assert route["decision"]["rejected_executors"]["aider"]["reason"] == "executor_unavailable"
+
+    override = svc.route_task(
+        {"workspace": str(tmp_path), "run_id": run_id, "task_id": task_id, "executor": "aider"}
+    )
+    assert override["decision"]["user_override"] == {
+        "requested_executor": "aider",
+        "honored": False,
+        "reason": "blocked_by_hard_safety_or_capability_filter",
+    }
+    assert override["decision"]["selected_executor"] == "hermes-direct"
 
 
 def test_isolated_worktree_dispatch_metadata_and_graph_checkpoint(tmp_path: Path) -> None:
