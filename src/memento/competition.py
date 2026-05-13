@@ -35,10 +35,12 @@ def select_patch(candidates: list[dict[str, Any]], *, policy: dict[str, Any] | N
         eligible.append((_candidate_score(candidate), candidate))
     eligible.sort(key=lambda item: item[0], reverse=True)
     selected = eligible[0][1] if eligible else None
+    approval_required = any(item.get("requires_approval") for item in rejected.values())
     return {
         "selected_dispatch_id": selected.get("dispatch_id") if selected else None,
         "selected_executor": selected.get("executor") if selected else None,
         "rejected": rejected,
         "preserved_evidence_trails": [str(candidate["dispatch_id"]) for candidate in candidates],
         "auto_merge_allowed": selected is not None,
+        "approval_required": selected is None and approval_required,
     }

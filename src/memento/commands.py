@@ -12,6 +12,7 @@ from typing import Any, Callable
 from .approvals import record_approval as save_approval_evidence, release_gate_satisfied
 from .context import build_context_bundle, write_context_bundle
 from .ci import record_external_check as save_external_check_evidence
+from .competition import select_patch as select_candidate_patch
 from .domain import (
     Evidence,
     GateKind,
@@ -64,6 +65,7 @@ REQUIRED_COMMANDS = (
     "memory-writeback",
     "record-external-check",
     "record-approval",
+    "select-patch",
     "release-gate",
     "recover-jobs",
 )
@@ -985,6 +987,87 @@ class CommandService:
             },
         )
         return {"command": "release-gate", **result}
+
+    def select_patch(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        run_id = str(args["run_id"])
+        if store.get_run(run_id) is None:
+            return {"ok": False, "command": "select-patch", "error": "run_not_found", "run_id": run_id}
+        candidates = list(args.get("candidates") or ())
+        if not candidates:
+            return {"ok": False, "command": "select-patch", "error": "candidates_required"}
+        policy = dict(args.get("policy") or {})
+        task_id = args.get("task_id")
+        candidate_evidence: list[dict[str, Any]] = []
+        for candidate in candidates:
+            dispatch_id = str(candidate["dispatch_id"])
+            verified = bool(candidate.get("verification_passed"))
+            unsafe_paths = list(candidate.get("unsafe_paths") or ())
+            graph_risk = str(candidate.get("graph_risk") or "unknown")
+            evidence = store.save_evidence(
+                Evidence(
+                    run_id=run_id,
+                    kind="patch_candidate",
+                    type="patch_candidate",
+                    summary=f"Patch candidate {dispatch_id} from {candidate.get('executor', 'unknown')} recorded.",
+                    task_id=str(task_id) if task_id else None,
+                    dispatch_id=dispatch_id,
+                    status="passed" if verified else "failed",
+                    trust_level="trusted",
+                    content_ref={"kind": "inline", "candidate": dict(candidate)},
+                    relationships={
+                        "verification_passed": verified,
+                        "unsafe_paths": unsafe_paths,
+                        "graph_risk": graph_risk,
+                    },
+                )
+            )
+            candidate_evidence.append(evidence.to_record())
+        decision = select_candidate_patch(candidates, policy=policy)
+        decision_status = "passed" if decision["selected_dispatch_id"] else "blocked"
+        if decision.get("approval_required"):
+            decision_status = "approval_required"
+        selected_dispatch_id = decision.get("selected_dispatch_id")
+        evidence = store.save_evidence(
+            Evidence(
+                run_id=run_id,
+                kind="patch_selection",
+                type="patch_selection",
+                summary=(
+                    f"Selected patch {selected_dispatch_id}."
+                    if selected_dispatch_id
+                    else "No patch selected; approval or verification is required."
+                ),
+                task_id=str(task_id) if task_id else None,
+                dispatch_id=str(selected_dispatch_id) if selected_dispatch_id else None,
+                status=decision_status,
+                trust_level="trusted",
+                content_ref={"kind": "inline", "decision": decision, "policy": policy},
+                relationships={
+                    "candidate_evidence_ids": [item["id"] for item in candidate_evidence],
+                    "preserved_evidence_trails": decision["preserved_evidence_trails"],
+                },
+            )
+        )
+        store.append_audit(
+            run_id,
+            actor="memento_lifecycle_worker",
+            action="patch_selection.decided",
+            summary=evidence.summary,
+            payload={
+                "selected_dispatch_id": selected_dispatch_id,
+                "auto_merge_allowed": decision["auto_merge_allowed"],
+                "approval_required": decision["approval_required"],
+                "evidence_id": evidence.id,
+            },
+        )
+        return {
+            "ok": bool(selected_dispatch_id),
+            "command": "select-patch",
+            "decision": decision,
+            "candidate_evidence": candidate_evidence,
+            "evidence": evidence.to_record(),
+        }
 
     def recover_jobs(self, args: dict[str, Any]) -> dict[str, Any]:
         store = self._store_for(args)

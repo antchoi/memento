@@ -42,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scope-id", help="Approval scope id.")
     parser.add_argument("--prompt", help="Approval prompt text.")
     parser.add_argument("--response", help="Approval response text.")
+    parser.add_argument("--candidate-json", action="append", dest="candidate_json", help="Patch candidate JSON; repeatable.")
+    parser.add_argument("--policy-json", help="Patch selection policy JSON.")
     parser.add_argument("--required-check", action="append", dest="required_checks", help="Required external check provider; repeatable.")
     parser.add_argument("--required-approvals", type=int, help="Required positive approval count.")
     args = parser.parse_args(argv)
@@ -74,6 +76,8 @@ def main(argv: list[str] | None = None) -> int:
         "scope_id": args.scope_id,
         "prompt": args.prompt,
         "response": args.response,
+        "candidates": [json.loads(item) for item in args.candidate_json] if args.candidate_json else None,
+        "policy": json.loads(args.policy_json) if args.policy_json else None,
         "required_checks": args.required_checks,
         "required_approvals": args.required_approvals,
     }

@@ -216,6 +216,21 @@ memento record-approval \
   --json
 ```
 
+### `select-patch`
+
+Record candidate patch evidence, run the patch selection policy, and persist the trusted selection decision. Unverified candidates are rejected before selection, and high-risk/unsafe candidates require approval when policy demands it.
+
+```bash
+memento select-patch \
+  --workspace /path/to/repo \
+  --run-id run_... \
+  --task-id task_... \
+  --candidate-json '{"dispatch_id":"dispatch_fast","executor":"codex","verification_passed":false}' \
+  --candidate-json '{"dispatch_id":"dispatch_safe","executor":"aider","verification_passed":true,"graph_risk":"low"}' \
+  --policy-json '{"require_approval_for_high_risk":true}' \
+  --json
+```
+
 ### `release-gate`
 
 Check release readiness from trusted external checks and positive approvals recorded in Memento state.

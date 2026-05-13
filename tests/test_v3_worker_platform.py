@@ -63,6 +63,109 @@ def test_multi_executor_competition_selects_verified_safer_patch() -> None:
     assert decision["rejected"]["dispatch_risky"]["requires_approval"] is True
 
 
+def test_select_patch_command_records_candidates_decision_and_audit(tmp_path: Path) -> None:
+    service = CommandService()
+    workspace = str(tmp_path)
+    run = service.start({"workspace": workspace, "goal": "compare patches"})["run"]
+    candidates = [
+        {
+            "dispatch_id": "dispatch_unverified",
+            "executor": "codex",
+            "verification_passed": False,
+            "unsafe_paths": [],
+            "diff_size": 12,
+            "graph_risk": "low",
+        },
+        {
+            "dispatch_id": "dispatch_safe",
+            "executor": "aider",
+            "verification_passed": True,
+            "unsafe_paths": [],
+            "diff_size": 18,
+            "graph_risk": "low",
+        },
+        {
+            "dispatch_id": "dispatch_risky",
+            "executor": "goose",
+            "verification_passed": True,
+            "unsafe_paths": [".env"],
+            "diff_size": 3,
+            "graph_risk": "high",
+        },
+    ]
+
+    result = service.select_patch(
+        {
+            "workspace": workspace,
+            "run_id": run["id"],
+            "task_id": "task_compete",
+            "candidates": candidates,
+            "policy": {"require_approval_for_high_risk": True},
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["command"] == "select-patch"
+    assert result["decision"]["selected_dispatch_id"] == "dispatch_safe"
+    assert result["decision"]["auto_merge_allowed"] is True
+    assert result["decision"]["rejected"]["dispatch_unverified"] == {
+        "reason": "verification_failed",
+        "requires_approval": False,
+    }
+    assert result["decision"]["rejected"]["dispatch_risky"] == {
+        "reason": "high_risk_or_unsafe_paths",
+        "requires_approval": True,
+    }
+    assert [item["dispatch_id"] for item in result["candidate_evidence"]] == [
+        "dispatch_unverified",
+        "dispatch_safe",
+        "dispatch_risky",
+    ]
+    assert result["evidence"]["type"] == "patch_selection"
+    assert result["evidence"]["dispatch_id"] == "dispatch_safe"
+
+    reopened = CommandService()
+    status = reopened.status({"workspace": workspace, "run_id": run["id"]})
+    assert [item["type"] for item in status["evidence"]] == [
+        "patch_candidate",
+        "patch_candidate",
+        "patch_candidate",
+        "patch_selection",
+    ]
+    assert status["audit"][-1]["action"] == "patch_selection.decided"
+    assert status["audit"][-1]["payload"]["selected_dispatch_id"] == "dispatch_safe"
+
+
+def test_select_patch_command_blocks_unverified_or_approval_required_only_candidates(tmp_path: Path) -> None:
+    service = CommandService()
+    workspace = str(tmp_path)
+    run = service.start({"workspace": workspace, "goal": "compare patches"})["run"]
+
+    result = service.select_patch(
+        {
+            "workspace": workspace,
+            "run_id": run["id"],
+            "candidates": [
+                {"dispatch_id": "dispatch_unverified", "executor": "codex", "verification_passed": False},
+                {
+                    "dispatch_id": "dispatch_risky",
+                    "executor": "goose",
+                    "verification_passed": True,
+                    "unsafe_paths": [".env"],
+                    "graph_risk": "high",
+                },
+            ],
+            "policy": {"require_approval_for_high_risk": True},
+        }
+    )
+
+    assert result["ok"] is False
+    assert result["decision"]["selected_dispatch_id"] is None
+    assert result["decision"]["auto_merge_allowed"] is False
+    assert result["decision"]["approval_required"] is True
+    assert result["evidence"]["status"] == "approval_required"
+
+
 def test_graph_diff_regression_warnings_are_advisory_by_default() -> None:
     before = {"god_nodes": ["src/api.py"], "cross_community_edges": 1, "modularity": 0.8}
     after = {"god_nodes": ["src/api.py", "src/global.py"], "cross_community_edges": 4, "modularity": 0.5}
