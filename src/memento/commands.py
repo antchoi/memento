@@ -640,7 +640,7 @@ class CommandService:
         dispatch = adapter.get_dispatch(dispatch_id)
         if dispatch is None:
             return {"ok": False, "error": "dispatch_not_found", "dispatch_id": dispatch_id}
-        if dispatch["status"] in {"completed", "failed"}:
+        if dispatch["status"] in {"completed", "failed", "recovered"}:
             return {"ok": False, "error": "dispatch_terminal", **dispatch}
         executor = str(args.get("executor") or dispatch.get("executor") or "hermes-profile")
         if dispatch["status"] == "claimed" and dispatch.get("claimed_by") != executor:
@@ -716,7 +716,7 @@ class CommandService:
         dispatch = adapter.get_dispatch(dispatch_id)
         if dispatch is None:
             return {"ok": False, "error": "dispatch_not_found", "dispatch_id": dispatch_id}
-        if dispatch["status"] in {"completed", "failed"}:
+        if dispatch["status"] in {"completed", "failed", "recovered"}:
             return {"ok": False, "error": "dispatch_terminal", **dispatch}
         reason = str(args.get("reason") or "Dispatch failed")
         adapter.append_event("dispatch.failed", dispatch_id, reason=reason)
@@ -741,7 +741,7 @@ class CommandService:
         dispatch = adapter.get_dispatch(dispatch_id)
         if dispatch is None:
             return {"ok": False, "error": "dispatch_not_found", "dispatch_id": dispatch_id}
-        if dispatch["status"] in {"completed", "failed"}:
+        if dispatch["status"] in {"completed", "failed", "recovered"}:
             return {"ok": False, "error": "dispatch_terminal", **dispatch}
         if dispatch["status"] != "claimed":
             return {"ok": False, "error": "dispatch_not_claimed", **dispatch}
@@ -1119,6 +1119,10 @@ class CommandService:
             return {"ok": False, "command": "recover-jobs", "error": "run_not_found", "run_id": run_id}
         jobs = recover_dispatch_jobs(store, run_id)
         recovered_jobs: list[dict[str, Any]] = []
+        requeued_dispatch_ids: list[str] = []
+        adapter = self._outbox_adapter_for(args)
+        should_requeue = bool(args.get("requeue"))
+        requeue_executor = str(args.get("executor") or "hermes-profile")
         for job in jobs:
             task = store.get_task(str(job["task_id"]))
             if task is None:
@@ -1151,16 +1155,55 @@ class CommandService:
                     },
                 )
             )
-            recovered_jobs.append(
-                {
-                    **job,
-                    "source_of_truth": store.source_of_truth,
-                    "context_bundle_id": bundle["id"],
-                    "context_bundle_hash": bundle["bundle_hash"],
-                    "context_bundle_path": str(bundle_path),
-                    "evidence_id": evidence.id,
-                }
-            )
+            recovered_job = {
+                **job,
+                "source_of_truth": store.source_of_truth,
+                "context_bundle_id": bundle["id"],
+                "context_bundle_hash": bundle["bundle_hash"],
+                "context_bundle_path": str(bundle_path),
+                "evidence_id": evidence.id,
+            }
+            if should_requeue:
+                active_dispatches = [
+                    dispatch
+                    for dispatch in adapter.list_dispatches()
+                    if dispatch.get("run_id") == run_id
+                    and dispatch.get("task_id") == task.id
+                    and dispatch.get("status") in {"queued", "claimed"}
+                ]
+                recovered_dispatch_ids = [str(dispatch["dispatch_id"]) for dispatch in active_dispatches]
+                redispatch = adapter.dispatch(
+                    ExecutorDispatchRequest(
+                        payload=build_worker_payload(run, task),
+                        executor=requeue_executor,
+                        reason="recovered restart handoff",
+                        metadata={
+                            "recovery_of": recovered_dispatch_ids,
+                            "context_bundle_path": str(bundle_path),
+                            "context_bundle_hash": bundle["bundle_hash"],
+                            "recovery_evidence_id": evidence.id,
+                        },
+                    )
+                )
+                for dispatch_id in recovered_dispatch_ids:
+                    adapter.append_event(
+                        "dispatch.recovered",
+                        dispatch_id,
+                        requeued_dispatch_id=redispatch["dispatch_id"],
+                        context_bundle_path=str(bundle_path),
+                        recovery_evidence_id=evidence.id,
+                    )
+                requeued_dispatch_ids.append(str(redispatch["dispatch_id"]))
+                recovered_job.update(
+                    {
+                        "recovered_dispatch_ids": recovered_dispatch_ids,
+                        "requeued_dispatch_id": redispatch["dispatch_id"],
+                        "requeue_executor": requeue_executor,
+                        "handoff_status": "queued",
+                        "outbox_path": redispatch["outbox_path"],
+                    }
+                )
+            recovered_jobs.append(recovered_job)
         store.append_audit(
             run_id,
             actor="memento_lifecycle_worker",
@@ -1168,6 +1211,18 @@ class CommandService:
             summary=f"Recovered {len(recovered_jobs)} restartable job(s) from canonical state.",
             payload={"job_count": len(recovered_jobs), "jobs": recovered_jobs},
         )
+        if requeued_dispatch_ids:
+            store.append_audit(
+                run_id,
+                actor="memento_lifecycle_worker",
+                action="recovery.requeued",
+                summary=f"Queued {len(requeued_dispatch_ids)} recovered restart handoff(s).",
+                payload={
+                    "requeued_dispatch_ids": requeued_dispatch_ids,
+                    "executor": requeue_executor,
+                    "job_count": len(recovered_jobs),
+                },
+            )
         return {"ok": True, "command": "recover-jobs", "job_count": len(recovered_jobs), "jobs": recovered_jobs}
 
     def add_evidence(self, run_id: str, *, kind: str, summary: str, uri: str | None = None) -> Evidence:

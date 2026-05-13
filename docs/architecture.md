@@ -127,7 +127,10 @@ JSONL dispatch record and returns `dispatched=True` while still recording
 `executor_invoked=False`. The outbox is
 append-only: `list-dispatches` materializes queued/claimed/completed/failed
 state, external peers report progress via `claim-dispatch`, `complete-dispatch`,
-and `fail-dispatch`, and completed/failed dispatches are terminal. That makes
+and `fail-dispatch`, and completed/failed/recovered dispatches are terminal.
+`recover-jobs --requeue` marks stale nonterminal dispatches as recovered, queues
+a fresh restart handoff linked to the regenerated context bundle, and keeps
+`executor_invoked=false` until an explicit worker invocation is requested. That makes
 handoff explicit and auditable without spawning child processes or supervising
 external logs.
 

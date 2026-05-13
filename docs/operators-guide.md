@@ -51,7 +51,19 @@ Then regenerate context instead of trying to reconstruct it from chat memory:
 ```bash
 memento context-bundle --workspace /path/to/repo --run-id run_... --task-id task_... --json
 memento worker-payload --workspace /path/to/repo --run-id run_... --task-id task_... --json
+memento recover-jobs --workspace /path/to/repo --run-id run_... --json
 ```
+
+When the previous outbox handoff is stale or tied to a lost native worker session,
+queue a new explicit restart handoff instead of waiting on the old process:
+
+```bash
+memento recover-jobs --workspace /path/to/repo --run-id run_... --requeue --executor hermes-profile --json
+```
+
+`--requeue` marks matching queued/claimed dispatches as `recovered`, appends a new
+queued dispatch linked to the regenerated bundle/evidence, and leaves actual
+worker execution to an explicit claim/complete lifecycle.
 
 ## Safety guardrails
 

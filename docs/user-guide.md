@@ -104,6 +104,14 @@ Reports are reconstructed from durable state and formatted for chat. If an execu
 memento recover-jobs --workspace /path/to/repo --run-id run_... --json
 ```
 
+If you also want Memento to reconcile the stale outbox handoff and queue a fresh restart handoff, add `--requeue`:
+
+```bash
+memento recover-jobs --workspace /path/to/repo --run-id run_... --requeue --executor hermes-profile --json
+```
+
+The old nonterminal dispatch is marked `recovered`, the new dispatch stays queued with `executor_invoked=false`, and `report` shows the recovered → requeued flow.
+
 For a single explicit worker handoff bundle, use:
 
 ```bash

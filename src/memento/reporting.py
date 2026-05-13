@@ -68,7 +68,14 @@ def _render_recovery_plan(status: dict[str, Any]) -> list[str]:
     lines = ["", "## Recovery plan", f"Restartable jobs: {payload.get('job_count', len(jobs))}"]
     for job in jobs:
         bundle_path = job.get("context_bundle_path") or "not generated"
-        lines.append(f"- {job.get('task_id')}: {job.get('status')} → {job.get('recovery_mode')} ({bundle_path})")
+        line = f"- {job.get('task_id')}: {job.get('status')} → {job.get('recovery_mode')} ({bundle_path})"
+        if job.get("requeued_dispatch_id"):
+            recovered_ids = ", ".join(str(item) for item in job.get("recovered_dispatch_ids") or []) or "none"
+            line += (
+                f"; recovered → requeued {job.get('requeued_dispatch_id')}"
+                f" via {job.get('requeue_executor', 'unknown')} (prior: {recovered_ids})"
+            )
+        lines.append(line)
     if not jobs:
         lines.append("- none")
     return lines

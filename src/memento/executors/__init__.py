@@ -30,6 +30,7 @@ class ExecutorDispatchRequest:
     executor: str = "hermes-profile"
     reason: str = "extension point"
     invoke: bool = False
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class ExecutorAdapter(Protocol):
@@ -66,12 +67,13 @@ class ExecutorOutboxRecord:
     payload: WorkerPayload
     executor: str
     reason: str
+    metadata: dict[str, Any] = field(default_factory=dict)
     id: str = field(default_factory=lambda: f"dispatch_{uuid4().hex[:12]}")
     created_at: str = field(default_factory=utc_now)
     invocation_policy: str = "outbox_only_no_process_spawn"
 
     def to_record(self) -> dict[str, Any]:
-        return {
+        record = {
             "id": self.id,
             "created_at": self.created_at,
             "executor": self.executor,
@@ -79,6 +81,9 @@ class ExecutorOutboxRecord:
             "invocation_policy": self.invocation_policy,
             "payload": self.payload.to_record(),
         }
+        if self.metadata:
+            record["metadata"] = self.metadata
+        return record
 
 
 class OutboxExecutorAdapter:
@@ -94,7 +99,10 @@ class OutboxExecutorAdapter:
 
     def dispatch(self, request: ExecutorDispatchRequest) -> dict[str, Any]:
         record = ExecutorOutboxRecord(
-            payload=request.payload, executor=request.executor, reason=request.reason
+            payload=request.payload,
+            executor=request.executor,
+            reason=request.reason,
+            metadata=dict(request.metadata),
         )
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record.to_record(), sort_keys=True) + "\n")
@@ -108,6 +116,7 @@ class OutboxExecutorAdapter:
             "dispatch_id": record.id,
             "payload": request.payload.to_record(),
             "invocation_policy": record.invocation_policy,
+            **dict(request.metadata),
         }
 
     def list_dispatches(self) -> list[dict[str, Any]]:
@@ -117,6 +126,7 @@ class OutboxExecutorAdapter:
         for event in self._events():
             dispatch_id = str(event.get("dispatch_id") or event.get("id"))
             event_type = str(event.get("type") or "dispatch.queued")
+            metadata = event.get("metadata") if isinstance(event.get("metadata"), dict) else {}
             current = dispatches.setdefault(
                 dispatch_id,
                 {
@@ -140,6 +150,10 @@ class OutboxExecutorAdapter:
                         "executor_invoked": bool(event.get("executor_invoked", False)),
                     }
                 )
+                if metadata.get("recovery_of") is not None:
+                    current["recovery_of"] = metadata.get("recovery_of")
+                if metadata.get("context_bundle_path") is not None:
+                    current["context_bundle_path"] = metadata.get("context_bundle_path")
             elif event_type == "dispatch.claimed":
                 current["status"] = "claimed"
                 current["claimed_by"] = event.get("executor")
@@ -150,6 +164,11 @@ class OutboxExecutorAdapter:
             elif event_type == "dispatch.failed":
                 current["status"] = "failed"
                 current["failed_at"] = event.get("created_at")
+            elif event_type == "dispatch.recovered":
+                current["status"] = "recovered"
+                current["recovered_at"] = event.get("created_at")
+                current["requeued_dispatch_id"] = event.get("requeued_dispatch_id")
+                current["context_bundle_path"] = event.get("context_bundle_path")
         return list(dispatches.values())
 
     def get_dispatch(self, dispatch_id: str) -> dict[str, Any] | None:

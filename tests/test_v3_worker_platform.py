@@ -487,3 +487,86 @@ def test_v3_recover_jobs_regenerates_context_bundles_evidence_and_report(tmp_pat
     assert "## Recovery plan" in report
     assert "Restartable jobs: 1" in report
     assert str(bundle_path) in report
+
+
+def test_v3_recover_jobs_can_requeue_lost_dispatch_handoff(tmp_path: Path) -> None:
+    workspace = str(tmp_path)
+    service = CommandService()
+    run = service.start({"workspace": workspace, "goal": "recover and requeue"})["run"]
+    plan = service.plan(
+        {
+            "workspace": workspace,
+            "run_id": run["id"],
+            "title": "Recovery requeue plan",
+            "body": "Recover a lost dispatch and queue a fresh restart handoff.",
+        }
+    )["plan"]
+    service.approve_plan({"workspace": workspace, "run_id": run["id"], "plan_id": plan["id"]})
+    task = service.enqueue_event(
+        {
+            "workspace": workspace,
+            "run_id": run["id"],
+            "title": "Restartable task",
+            "body": "Simulate lost native worker session.",
+        }
+    )["task"]
+    queued = service.dispatch_task(
+        {"workspace": workspace, "run_id": run["id"], "task_id": task["id"], "executor": "codex"}
+    )
+    claimed = service.claim_dispatch(
+        {"workspace": workspace, "run_id": run["id"], "dispatch_id": queued["dispatch_id"], "executor": "codex"}
+    )
+    assert claimed["status"] == "claimed"
+
+    recovered = CommandService().recover_jobs(
+        {"workspace": workspace, "run_id": run["id"], "requeue": True, "executor": "hermes-profile"}
+    )
+
+    assert recovered["ok"] is True
+    job = recovered["jobs"][0]
+    assert job["recovered_dispatch_ids"] == [queued["dispatch_id"]]
+    assert job["requeued_dispatch_id"].startswith("dispatch_")
+    assert job["requeued_dispatch_id"] != queued["dispatch_id"]
+    assert job["requeue_executor"] == "hermes-profile"
+    assert job["handoff_status"] == "queued"
+
+    dispatches = CommandService().list_dispatches({"workspace": workspace, "run_id": run["id"]})["dispatches"]
+    by_id = {item["dispatch_id"]: item for item in dispatches}
+    assert by_id[queued["dispatch_id"]]["status"] == "recovered"
+    assert by_id[queued["dispatch_id"]]["requeued_dispatch_id"] == job["requeued_dispatch_id"]
+    fresh = by_id[job["requeued_dispatch_id"]]
+    assert fresh["status"] == "queued"
+    assert fresh["recovery_of"] == [queued["dispatch_id"]]
+    assert fresh["context_bundle_path"] == job["context_bundle_path"]
+    assert fresh["executor_invoked"] is False
+
+    status = CommandService().status({"workspace": workspace, "run_id": run["id"]})
+    assert [event["action"] for event in status["audit"]][-2:] == [
+        "recovery.planned",
+        "recovery.requeued",
+    ]
+    assert status["audit"][-1]["payload"]["requeued_dispatch_ids"] == [job["requeued_dispatch_id"]]
+
+    claimed_again = CommandService().claim_dispatch(
+        {
+            "workspace": workspace,
+            "run_id": run["id"],
+            "dispatch_id": job["requeued_dispatch_id"],
+            "executor": "hermes-profile",
+        }
+    )
+    completed = CommandService().complete_dispatch(
+        {
+            "workspace": workspace,
+            "run_id": run["id"],
+            "dispatch_id": job["requeued_dispatch_id"],
+            "summary": "Recovered handoff verified",
+            "evidence_uri": "file://verification/recovered.log",
+        }
+    )
+    assert claimed_again["status"] == "claimed"
+    assert completed["ok"] is True
+    assert completed["status"] == "completed"
+    report = CommandService().report({"workspace": workspace, "run_id": run["id"]})["text"]
+    assert "recovered → requeued" in report
+    assert job["requeued_dispatch_id"] in report

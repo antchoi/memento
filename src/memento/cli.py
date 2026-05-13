@@ -48,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--after-graph-json", help="Graph snapshot JSON after a change.")
     parser.add_argument("--required-check", action="append", dest="required_checks", help="Required external check provider; repeatable.")
     parser.add_argument("--required-approvals", type=int, help="Required positive approval count.")
+    parser.add_argument("--requeue", action="store_true", help="Queue fresh restart handoffs during recover-jobs.")
     args = parser.parse_args(argv)
 
     payload = {
@@ -85,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
         "after_graph": json.loads(args.after_graph_json) if args.after_graph_json else None,
         "required_checks": args.required_checks,
         "required_approvals": args.required_approvals,
+        "requeue": args.requeue,
     }
     payload = {k: v for k, v in payload.items() if v not in (None, False)}
     result = CommandService().handler_for(args.command)(payload)

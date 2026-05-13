@@ -265,7 +265,18 @@ Reconstruct restartable long-running worker jobs from canonical Memento state wi
 memento recover-jobs --workspace /path/to/repo --run-id run_... --json
 ```
 
-Use the regenerated bundle path as the next disposable worker handoff; do not depend on an OpenCode/TUI/native session surviving the restart.
+To turn the recovered context into a fresh explicit handoff, add `--requeue`. Memento marks matching nonterminal outbox dispatches as `recovered`, queues a new outbox dispatch with `executor_invoked=false`, links it to the regenerated bundle/evidence, and records a `recovery.requeued` audit event:
+
+```bash
+memento recover-jobs \
+  --workspace /path/to/repo \
+  --run-id run_... \
+  --requeue \
+  --executor hermes-profile \
+  --json
+```
+
+Use the regenerated bundle path or the requeued dispatch id as the next disposable worker handoff; do not depend on an OpenCode/TUI/native session surviving the restart.
 
 ## Routing, graph, and memory
 
