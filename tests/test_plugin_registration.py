@@ -57,6 +57,7 @@ def test_register_adds_full_command_surface_with_metadata_and_structured_result(
             "memento.memory-writeback",
             "memento.record-external-check",
             "memento.record-approval",
+            "memento.record-graph-diff",
             "memento.select-patch",
             "memento.release-gate",
             "memento.recover-jobs",

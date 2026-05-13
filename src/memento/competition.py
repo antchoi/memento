@@ -19,13 +19,27 @@ def _candidate_score(candidate: dict[str, Any]) -> int:
     return score
 
 
+def _graph_risk(candidate: dict[str, Any]) -> str:
+    explicit = candidate.get("graph_risk")
+    if explicit:
+        return str(explicit)
+    graph_diff = candidate.get("graph_diff") or {}
+    if graph_diff.get("warnings") or graph_diff.get("risk") == "high":
+        return "high"
+    return "unknown"
+
+
 def select_patch(candidates: list[dict[str, Any]], *, policy: dict[str, Any] | None = None) -> dict[str, Any]:
     policy = policy or {}
     rejected: dict[str, dict[str, Any]] = {}
     eligible: list[tuple[int, dict[str, Any]]] = []
     for candidate in candidates:
         dispatch_id = str(candidate["dispatch_id"])
-        requires_approval = bool(candidate.get("unsafe_paths")) or candidate.get("graph_risk") == "high"
+        graph_risk = _graph_risk(candidate)
+        requires_approval = bool(candidate.get("unsafe_paths")) or graph_risk == "high"
+        if graph_risk == "high" and policy.get("require_approval_for_graph_regressions"):
+            rejected[dispatch_id] = {"reason": "graph_regression_requires_approval", "requires_approval": True}
+            continue
         if requires_approval and policy.get("require_approval_for_high_risk", True):
             rejected[dispatch_id] = {"reason": "high_risk_or_unsafe_paths", "requires_approval": True}
             continue

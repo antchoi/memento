@@ -216,9 +216,22 @@ memento record-approval \
   --json
 ```
 
+### `record-graph-diff`
+
+Record trusted Graphify-style architecture diff evidence. Warnings are advisory by default, but selection/release policy can require approval when graph regressions appear.
+
+```bash
+memento record-graph-diff \
+  --workspace /path/to/repo \
+  --run-id run_... \
+  --before-graph-json '{"god_nodes":[],"cross_community_edges":1,"modularity":0.8}' \
+  --after-graph-json '{"god_nodes":["src/global.py"],"cross_community_edges":5,"modularity":0.4}' \
+  --json
+```
+
 ### `select-patch`
 
-Record candidate patch evidence, run the patch selection policy, and persist the trusted selection decision. Unverified candidates are rejected before selection, and high-risk/unsafe candidates require approval when policy demands it.
+Record candidate patch evidence, run the patch selection policy, and persist the trusted selection decision. Unverified candidates are rejected before selection, and high-risk/unsafe candidates require approval when policy demands it. Candidate `graph_diff` warnings are treated as high graph risk; `--policy-json '{"require_approval_for_graph_regressions":true}'` strengthens graph regressions into an approval requirement.
 
 ```bash
 memento select-patch \
@@ -233,7 +246,7 @@ memento select-patch \
 
 ### `release-gate`
 
-Check release readiness from trusted external checks and positive approvals recorded in Memento state.
+Check release readiness from trusted external checks and positive approvals recorded in Memento state. `--policy-json '{"require_no_graph_warnings":true}'` makes recorded graph-diff warnings block the gate until review/approval policy is satisfied.
 
 ```bash
 memento release-gate \

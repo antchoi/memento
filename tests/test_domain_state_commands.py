@@ -118,6 +118,7 @@ def test_command_surface_has_all_required_handlers(tmp_path: Path) -> None:
             "memory-writeback",
             "record-external-check",
             "record-approval",
+            "record-graph-diff",
             "select-patch",
             "release-gate",
             "recover-jobs",

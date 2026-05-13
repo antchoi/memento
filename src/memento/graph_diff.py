@@ -19,9 +19,11 @@ def detect_graph_regressions(before: dict[str, Any], after: dict[str, Any], *, b
     after_mod = float(after.get("modularity") or 0)
     if before_mod and after_mod < before_mod:
         warnings.append("modularity_decreased")
+    risk = "high" if warnings else "low"
     return {
         "status": "warning" if warnings else "ok",
         "warnings": warnings,
+        "risk": risk,
         "blocking": bool(blocking and warnings),
         "advisory": not blocking,
         "before": before,

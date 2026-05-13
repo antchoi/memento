@@ -26,6 +26,7 @@ from .domain import (
 )
 from .events import enqueue_event_task
 from .executors import ExecutorDispatchRequest, OutboxExecutorAdapter
+from .graph_diff import detect_graph_regressions
 from .graphify import graph_status, update_graph
 from .kanban import HermesKanbanCliAdapter, JsonKanbanAdapter
 from .memory import LocalMemoryAdapter
@@ -65,6 +66,7 @@ REQUIRED_COMMANDS = (
     "memory-writeback",
     "record-external-check",
     "record-approval",
+    "record-graph-diff",
     "select-patch",
     "release-gate",
     "recover-jobs",
@@ -974,6 +976,7 @@ class CommandService:
             run_id,
             required_checks=required_checks,
             required_approvals=required_approvals,
+            graph_policy=dict(args.get("graph_policy") or args.get("policy") or {}),
         )
         store.append_audit(
             run_id,
@@ -983,10 +986,49 @@ class CommandService:
             payload={
                 "required_checks": list(required_checks),
                 "required_approvals": required_approvals,
+                "graph_policy": dict(args.get("graph_policy") or args.get("policy") or {}),
                 **result,
             },
         )
         return {"command": "release-gate", **result}
+
+    def record_graph_diff(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        run_id = str(args["run_id"])
+        if store.get_run(run_id) is None:
+            return {"ok": False, "command": "record-graph-diff", "error": "run_not_found", "run_id": run_id}
+        before = dict(args.get("before_graph") or {})
+        after = dict(args.get("after_graph") or {})
+        if not before and not after:
+            return {"ok": False, "command": "record-graph-diff", "error": "graph_snapshots_required"}
+        diff = detect_graph_regressions(before, after, blocking=bool(args.get("blocking")))
+        warnings = list(diff.get("warnings") or [])
+        evidence = store.save_evidence(
+            Evidence(
+                run_id=run_id,
+                kind="graph_diff",
+                type="graph_diff",
+                summary=(
+                    "Graph diff detected architecture regression warnings."
+                    if warnings
+                    else "Graph diff detected no architecture regressions."
+                ),
+                task_id=str(args.get("task_id")) if args.get("task_id") else None,
+                status="warning" if warnings else "passed",
+                trust_level="trusted",
+                source={"kind": "graphify", "checkpoint": "manual"},
+                content_ref={"kind": "inline", "diff": diff},
+                relationships={"warnings": warnings, "risk": diff["risk"], "blocking": diff["blocking"]},
+            )
+        )
+        store.append_audit(
+            run_id,
+            actor="memento_lifecycle_worker",
+            action="graph_diff.recorded",
+            summary=evidence.summary,
+            payload={"evidence_id": evidence.id, "warnings": warnings, "risk": diff["risk"]},
+        )
+        return {"ok": True, "command": "record-graph-diff", "diff": diff, "evidence": evidence.to_record()}
 
     def select_patch(self, args: dict[str, Any]) -> dict[str, Any]:
         store = self._store_for(args)

@@ -44,7 +44,9 @@ def release_gate_satisfied(
     *,
     required_checks: tuple[str, ...] = (),
     required_approvals: int = 0,
+    graph_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    graph_policy = graph_policy or {}
     evidence = store.list_evidence(run_id)
     checks = {
         item.source.get("provider")
@@ -54,9 +56,18 @@ def release_gate_satisfied(
     approvals = [item for item in evidence if item.type == "user_approval" and item.status == "passed"]
     missing_checks = [check for check in required_checks if check not in checks]
     missing_approvals = max(0, required_approvals - len(approvals))
+    graph_warning_items = [item for item in evidence if item.type == "graph_diff" and item.status == "warning"]
+    graph_warnings: list[str] = []
+    for item in graph_warning_items:
+        for warning in item.relationships.get("warnings") or []:
+            if warning not in graph_warnings:
+                graph_warnings.append(str(warning))
+    graph_approval_required = bool(graph_policy.get("require_no_graph_warnings") and graph_warnings)
     return {
-        "ok": not missing_checks and missing_approvals == 0,
+        "ok": not missing_checks and missing_approvals == 0 and not graph_approval_required,
         "missing_checks": missing_checks,
         "missing_approvals": missing_approvals,
         "approval_count": len(approvals),
+        "graph_warnings": graph_warnings,
+        "graph_approval_required": graph_approval_required,
     }

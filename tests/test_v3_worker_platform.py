@@ -171,9 +171,84 @@ def test_graph_diff_regression_warnings_are_advisory_by_default() -> None:
     after = {"god_nodes": ["src/api.py", "src/global.py"], "cross_community_edges": 4, "modularity": 0.5}
     diff = detect_graph_regressions(before, after)
     assert diff["status"] == "warning"
+    assert diff["risk"] == "high"
     assert diff["blocking"] is False
     assert "new_god_node" in diff["warnings"]
     assert "cross_community_edges_increased" in diff["warnings"]
+
+
+def test_record_graph_diff_command_persists_warning_evidence_and_audit(tmp_path: Path) -> None:
+    service = CommandService()
+    workspace = str(tmp_path)
+    run = service.start({"workspace": workspace, "goal": "graph diff"})["run"]
+
+    result = service.record_graph_diff(
+        {
+            "workspace": workspace,
+            "run_id": run["id"],
+            "before_graph": {"god_nodes": [], "cross_community_edges": 1, "modularity": 0.8},
+            "after_graph": {"god_nodes": ["src/global.py"], "cross_community_edges": 4, "modularity": 0.5},
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["command"] == "record-graph-diff"
+    assert result["diff"]["risk"] == "high"
+    assert result["evidence"]["type"] == "graph_diff"
+    assert result["evidence"]["status"] == "warning"
+    assert result["evidence"]["relationships"]["risk"] == "high"
+
+    reopened = CommandService()
+    status = reopened.status({"workspace": workspace, "run_id": run["id"]})
+    assert [item["type"] for item in status["evidence"]] == ["graph_diff"]
+    assert status["audit"][-1]["action"] == "graph_diff.recorded"
+
+
+def test_graph_diff_policy_strengthens_patch_selection_and_release_gate(tmp_path: Path) -> None:
+    service = CommandService()
+    workspace = str(tmp_path)
+    run = service.start({"workspace": workspace, "goal": "graph policy"})["run"]
+    warning = service.record_graph_diff(
+        {
+            "workspace": workspace,
+            "run_id": run["id"],
+            "before_graph": {"god_nodes": [], "cross_community_edges": 1, "modularity": 0.8},
+            "after_graph": {"god_nodes": ["src/global.py"], "cross_community_edges": 5, "modularity": 0.4},
+        }
+    )["diff"]
+
+    selection = service.select_patch(
+        {
+            "workspace": workspace,
+            "run_id": run["id"],
+            "candidates": [
+                {
+                    "dispatch_id": "dispatch_graph_regression",
+                    "executor": "codex",
+                    "verification_passed": True,
+                    "graph_diff": warning,
+                }
+            ],
+            "policy": {"require_approval_for_graph_regressions": True},
+        }
+    )
+    assert selection["ok"] is False
+    assert selection["decision"]["rejected"]["dispatch_graph_regression"] == {
+        "reason": "graph_regression_requires_approval",
+        "requires_approval": True,
+    }
+    assert selection["decision"]["approval_required"] is True
+
+    gate = service.release_gate(
+        {
+            "workspace": workspace,
+            "run_id": run["id"],
+            "graph_policy": {"require_no_graph_warnings": True},
+        }
+    )
+    assert gate["ok"] is False
+    assert gate["graph_warnings"] == ["new_god_node", "cross_community_edges_increased", "modularity_decreased"]
+    assert gate["graph_approval_required"] is True
 
 
 def test_external_ci_evidence_and_release_approval_gate(tmp_path: Path) -> None:
@@ -284,6 +359,8 @@ def test_v3_ci_approval_release_gate_commands_persist_evidence(tmp_path: Path) -
         "missing_checks": [],
         "missing_approvals": 0,
         "approval_count": 1,
+        "graph_warnings": [],
+        "graph_approval_required": False,
     }
 
     reopened = CommandService()

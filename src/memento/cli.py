@@ -43,7 +43,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prompt", help="Approval prompt text.")
     parser.add_argument("--response", help="Approval response text.")
     parser.add_argument("--candidate-json", action="append", dest="candidate_json", help="Patch candidate JSON; repeatable.")
-    parser.add_argument("--policy-json", help="Patch selection policy JSON.")
+    parser.add_argument("--policy-json", help="Patch selection or release/graph policy JSON.")
+    parser.add_argument("--before-graph-json", help="Graph snapshot JSON before a change.")
+    parser.add_argument("--after-graph-json", help="Graph snapshot JSON after a change.")
     parser.add_argument("--required-check", action="append", dest="required_checks", help="Required external check provider; repeatable.")
     parser.add_argument("--required-approvals", type=int, help="Required positive approval count.")
     args = parser.parse_args(argv)
@@ -78,6 +80,9 @@ def main(argv: list[str] | None = None) -> int:
         "response": args.response,
         "candidates": [json.loads(item) for item in args.candidate_json] if args.candidate_json else None,
         "policy": json.loads(args.policy_json) if args.policy_json else None,
+        "graph_policy": json.loads(args.policy_json) if args.policy_json and args.command == "release-gate" else None,
+        "before_graph": json.loads(args.before_graph_json) if args.before_graph_json else None,
+        "after_graph": json.loads(args.after_graph_json) if args.after_graph_json else None,
         "required_checks": args.required_checks,
         "required_approvals": args.required_approvals,
     }
