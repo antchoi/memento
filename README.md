@@ -132,6 +132,7 @@ Read the full command guide in [`docs/commands.md`](docs/commands.md). The main 
 - lifecycle: `start`, `plan`, `approve-plan`, `pause`, `resume`, `cancel`, `status`, `report`;
 - tasks and handoff: `enqueue-event`, `worker-payload`, `dispatch-task`, `list-dispatches`, `claim-dispatch`, `complete-dispatch`, `fail-dispatch`;
 - verification and context: `context-bundle`, `route-task`, `verify-task`, `graph-status`, `graph-update`, `memory-prefetch`, `memory-writeback`;
+- v3 worker platform: `record-external-check`, `record-approval`, `release-gate`, `recover-jobs`;
 - review: `review`.
 
 ## Hermes plugin boundary

@@ -9,7 +9,9 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
+from .approvals import record_approval as save_approval_evidence, release_gate_satisfied
 from .context import build_context_bundle, write_context_bundle
+from .ci import record_external_check as save_external_check_evidence
 from .domain import (
     Evidence,
     GateKind,
@@ -26,6 +28,7 @@ from .executors import ExecutorDispatchRequest, OutboxExecutorAdapter
 from .graphify import graph_status, update_graph
 from .kanban import HermesKanbanCliAdapter, JsonKanbanAdapter
 from .memory import LocalMemoryAdapter
+from .recovery import recover_dispatch_jobs
 from .routing import registry_snapshot, route_task
 from .state import SQLiteStateStore
 from .verification import evaluate_task
@@ -59,6 +62,10 @@ REQUIRED_COMMANDS = (
     "graph-update",
     "memory-prefetch",
     "memory-writeback",
+    "record-external-check",
+    "record-approval",
+    "release-gate",
+    "recover-jobs",
 )
 FORBIDDEN_CORE_IMPORT_ROOTS = frozenset({"opencode", "oh_my_openagent"})
 
@@ -889,6 +896,110 @@ class CommandService:
         adapter = LocalMemoryAdapter()
         result = adapter.save_lesson(str(args.get("lesson") or args.get("summary") or ""))
         return {"ok": True, "command": "memory-writeback", **result}
+
+    def record_external_check(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        run_id = str(args["run_id"])
+        if store.get_run(run_id) is None:
+            return {"ok": False, "command": "record-external-check", "error": "run_not_found", "run_id": run_id}
+        provider = str(args.get("provider") or "").strip()
+        if not provider:
+            return {"ok": False, "command": "record-external-check", "error": "provider_required"}
+        payload = {
+            key: value
+            for key, value in {
+                "run_id": args.get("external_run_id") or args.get("external_check_id") or args.get("ci_run_id"),
+                "status": args.get("status"),
+                "conclusion": args.get("conclusion"),
+                "url": args.get("url") or args.get("evidence_uri"),
+            }.items()
+            if value not in (None, "")
+        }
+        evidence = save_external_check_evidence(store, run_id=run_id, provider=provider, payload=payload)
+        store.append_audit(
+            run_id,
+            actor="memento_lifecycle_worker",
+            action="external_check.recorded",
+            summary=evidence.summary,
+            payload={"evidence_id": evidence.id, "provider": provider},
+        )
+        return {"ok": True, "command": "record-external-check", "evidence": evidence.to_record()}
+
+    def record_approval(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        run_id = str(args["run_id"])
+        if store.get_run(run_id) is None:
+            return {"ok": False, "command": "record-approval", "error": "run_not_found", "run_id": run_id}
+        actor = str(args.get("actor") or args.get("reviewer") or "founder_user")
+        scope = dict(args.get("scope") or {})
+        if not scope:
+            scope = {
+                "kind": str(args.get("scope_kind") or "run"),
+                "id": str(args.get("scope_id") or run_id),
+            }
+        prompt = str(args.get("prompt") or "Approval requested")
+        response = str(args.get("response") or args.get("summary") or "")
+        evidence = save_approval_evidence(
+            store,
+            run_id=run_id,
+            actor=actor,
+            scope=scope,
+            prompt=prompt,
+            response=response,
+        )
+        store.append_audit(
+            run_id,
+            actor=actor,
+            action="approval.recorded",
+            summary=evidence.summary,
+            payload={"evidence_id": evidence.id, "scope": scope},
+        )
+        return {"ok": True, "command": "record-approval", "evidence": evidence.to_record()}
+
+    def release_gate(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        run_id = str(args["run_id"])
+        if store.get_run(run_id) is None:
+            return {"ok": False, "command": "release-gate", "error": "run_not_found", "run_id": run_id}
+        required_checks = tuple(args.get("required_checks") or ())
+        if isinstance(args.get("required_checks"), str):
+            required_checks = tuple(
+                check.strip() for check in str(args["required_checks"]).split(",") if check.strip()
+            )
+        required_approvals = int(args.get("required_approvals") or 0)
+        result = release_gate_satisfied(
+            store,
+            run_id,
+            required_checks=required_checks,
+            required_approvals=required_approvals,
+        )
+        store.append_audit(
+            run_id,
+            actor="memento_lifecycle_worker",
+            action="release_gate.checked",
+            summary="Release gate satisfied." if result["ok"] else "Release gate missing required evidence.",
+            payload={
+                "required_checks": list(required_checks),
+                "required_approvals": required_approvals,
+                **result,
+            },
+        )
+        return {"command": "release-gate", **result}
+
+    def recover_jobs(self, args: dict[str, Any]) -> dict[str, Any]:
+        store = self._store_for(args)
+        run_id = str(args["run_id"])
+        if store.get_run(run_id) is None:
+            return {"ok": False, "command": "recover-jobs", "error": "run_not_found", "run_id": run_id}
+        jobs = recover_dispatch_jobs(store, run_id)
+        store.append_audit(
+            run_id,
+            actor="memento_lifecycle_worker",
+            action="recovery.planned",
+            summary=f"Recovered {len(jobs)} restartable job(s) from canonical state.",
+            payload={"job_count": len(jobs)},
+        )
+        return {"ok": True, "command": "recover-jobs", "jobs": jobs}
 
     def add_evidence(self, run_id: str, *, kind: str, summary: str, uri: str | None = None) -> Evidence:
         store = self._store_for({})

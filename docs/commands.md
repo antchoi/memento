@@ -184,6 +184,59 @@ Evaluate a task against verification policy.
 memento verify-task --workspace /path/to/repo --run-id run_... --task-id task_... --json
 ```
 
+### `record-external-check`
+
+Record trusted CI/build/status evidence fetched from an external source API.
+
+```bash
+memento record-external-check \
+  --workspace /path/to/repo \
+  --run-id run_... \
+  --provider github_actions \
+  --external-run-id 123 \
+  --status completed \
+  --conclusion success \
+  --url https://ci.example/run/123 \
+  --json
+```
+
+### `record-approval`
+
+Record a first-class user/team approval evidence item. Positive approval parsing is exact-token based; a phrase such as “I do not approve this release” does not satisfy approval gates.
+
+```bash
+memento record-approval \
+  --workspace /path/to/repo \
+  --run-id run_... \
+  --actor c \
+  --scope-kind release \
+  --scope-id run_... \
+  --prompt "Approve release?" \
+  --response approved \
+  --json
+```
+
+### `release-gate`
+
+Check release readiness from trusted external checks and positive approvals recorded in Memento state.
+
+```bash
+memento release-gate \
+  --workspace /path/to/repo \
+  --run-id run_... \
+  --required-check github_actions \
+  --required-approvals 1 \
+  --json
+```
+
+### `recover-jobs`
+
+Reconstruct restartable long-running worker jobs from canonical Memento state without requiring native worker session memory.
+
+```bash
+memento recover-jobs --workspace /path/to/repo --run-id run_... --json
+```
+
 ## Routing, graph, and memory
 
 ### `route-task`

@@ -116,6 +116,10 @@ def test_command_surface_has_all_required_handlers(tmp_path: Path) -> None:
             "graph-update",
             "memory-prefetch",
             "memory-writeback",
+            "record-external-check",
+            "record-approval",
+            "release-gate",
+            "recover-jobs",
     }
     assert set(command_names()) == expected
 

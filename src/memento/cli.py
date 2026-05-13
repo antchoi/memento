@@ -32,6 +32,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--query", help="Memory or graph query text.")
     parser.add_argument("--lesson", help="Durable memory lesson candidate.")
     parser.add_argument("--mock-graphify", action="store_true", help="Use mock Graphify update for tests/smoke.")
+    parser.add_argument("--provider", help="External check provider, for example github_actions.")
+    parser.add_argument("--external-run-id", help="Provider-native external check/run id.")
+    parser.add_argument("--status", help="External check or gate status.")
+    parser.add_argument("--conclusion", help="External check conclusion, for example success or failure.")
+    parser.add_argument("--url", help="External evidence URL.")
+    parser.add_argument("--actor", help="Approval actor.")
+    parser.add_argument("--scope-kind", help="Approval scope kind, for example release.")
+    parser.add_argument("--scope-id", help="Approval scope id.")
+    parser.add_argument("--prompt", help="Approval prompt text.")
+    parser.add_argument("--response", help="Approval response text.")
+    parser.add_argument("--required-check", action="append", dest="required_checks", help="Required external check provider; repeatable.")
+    parser.add_argument("--required-approvals", type=int, help="Required positive approval count.")
     args = parser.parse_args(argv)
 
     payload = {
@@ -52,6 +64,18 @@ def main(argv: list[str] | None = None) -> int:
         "query": args.query,
         "lesson": args.lesson,
         "mock_graphify": args.mock_graphify,
+        "provider": args.provider,
+        "external_run_id": args.external_run_id,
+        "status": args.status,
+        "conclusion": args.conclusion,
+        "url": args.url,
+        "actor": args.actor,
+        "scope_kind": args.scope_kind,
+        "scope_id": args.scope_id,
+        "prompt": args.prompt,
+        "response": args.response,
+        "required_checks": args.required_checks,
+        "required_approvals": args.required_approvals,
     }
     payload = {k: v for k, v in payload.items() if v not in (None, False)}
     result = CommandService().handler_for(args.command)(payload)

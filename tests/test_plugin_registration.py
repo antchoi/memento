@@ -55,6 +55,10 @@ def test_register_adds_full_command_surface_with_metadata_and_structured_result(
             "memento.graph-update",
             "memento.memory-prefetch",
             "memento.memory-writeback",
+            "memento.record-external-check",
+            "memento.record-approval",
+            "memento.release-gate",
+            "memento.recover-jobs",
     }
     assert result["ok"] is True
     assert result["plugin"] == "memento"
