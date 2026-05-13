@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -155,6 +156,38 @@ def test_unavailable_external_executors_are_not_selected_or_honored(
         "reason": "blocked_by_hard_safety_or_capability_filter",
     }
     assert override["decision"]["selected_executor"] == "hermes-direct"
+
+
+def test_isolated_worktree_creation_blocks_dirty_canonical_workspace(tmp_path: Path) -> None:
+    _store, run_id, task_id = _run_with_task(tmp_path)
+    subprocess.run(["git", "init", "-b", "feature"], cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "Memento Test"], cwd=tmp_path, check=True)
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("clean", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "baseline"], cwd=tmp_path, check=True, capture_output=True)
+    tracked.write_text("dirty", encoding="utf-8")
+
+    svc = CommandService()
+    outbox_path = tmp_path / ".memento" / "blocked-outbox.jsonl"
+
+    dispatch = svc.dispatch_task(
+        {
+            "workspace": str(tmp_path),
+            "run_id": run_id,
+            "task_id": task_id,
+            "executor": "aider",
+            "isolated_worktree": True,
+            "create_worktree": True,
+            "outbox_path": str(outbox_path),
+        }
+    )
+
+    assert dispatch["ok"] is False
+    assert dispatch["error"] == "dirty_worktree"
+    assert dispatch["worktree"]["created"] is False
+    assert not outbox_path.exists()
 
 
 def test_isolated_worktree_dispatch_metadata_and_graph_checkpoint(tmp_path: Path) -> None:

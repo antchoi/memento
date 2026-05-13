@@ -578,6 +578,13 @@ class CommandService:
             if task is None:
                 return {"ok": False, "error": "task_not_found", "command": "dispatch-task"}
             worktree = create_isolated_worktree(workspace, task, dry_run=not bool(args.get("create_worktree")))
+            if bool(args.get("create_worktree")) and not worktree.get("created"):
+                return {
+                    "ok": False,
+                    "command": "dispatch-task",
+                    "error": worktree.get("error") or "worktree_creation_failed",
+                    "worktree": worktree,
+                }
         dispatch = adapter.dispatch(
             ExecutorDispatchRequest(
                 payload=payload,
