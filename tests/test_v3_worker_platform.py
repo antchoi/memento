@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from memento.commands import CommandService
 from memento.approvals import record_approval, release_gate_satisfied
 from memento.ci import record_external_check
+from memento.commands import CommandService
 from memento.competition import select_patch
 from memento.domain import MementoTask, TaskStatus
 from memento.graph_diff import detect_graph_regressions
@@ -414,12 +415,75 @@ def test_v3_recover_jobs_command_exposes_restart_plan(tmp_path: Path) -> None:
 
     assert result["ok"] is True
     assert result["command"] == "recover-jobs"
-    assert result["jobs"] == [
+    assert result["job_count"] == 1
+    job = result["jobs"][0]
+    assert {
+        "task_id": job["task_id"],
+        "status": job["status"],
+        "recovery_mode": job["recovery_mode"],
+        "native_session_required": job["native_session_required"],
+        "verification_policy": job["verification_policy"],
+    } == {
+        "task_id": task.id,
+        "status": "in_progress",
+        "recovery_mode": "regenerate_context_bundle",
+        "native_session_required": False,
+        "verification_policy": {"required_commands": ["python -m pytest -q"]},
+    }
+    assert job["context_bundle_path"]
+
+
+def test_v3_recover_jobs_regenerates_context_bundles_evidence_and_report(tmp_path: Path) -> None:
+    workspace = str(tmp_path)
+    setup = CommandService()
+    run = setup.start({"workspace": workspace, "goal": "recover after restart"})["run"]
+    plan = setup.plan(
         {
-            "task_id": task.id,
-            "status": "in_progress",
-            "recovery_mode": "regenerate_context_bundle",
-            "native_session_required": False,
-            "verification_policy": {"required_commands": ["python -m pytest -q"]},
+            "workspace": workspace,
+            "run_id": run["id"],
+            "title": "Recovery plan",
+            "body": "Regenerate canonical context bundles for restartable jobs.",
         }
-    ]
+    )["plan"]
+    setup.approve_plan({"workspace": workspace, "run_id": run["id"], "plan_id": plan["id"]})
+    store = SQLiteStateStore(SQLiteStateStore.default_path(tmp_path))
+    task = store.save_task(
+        MementoTask(
+            run_id=run["id"],
+            title="Long job",
+            description="Resume from canonical state only",
+            status=TaskStatus.SUBMITTED,
+            acceptance_criteria=("bundle can restart worker",),
+            verification_policy={"required_commands": ["python -m pytest -q"]},
+            context_refs=("src/memento/recovery.py",),
+        )
+    )
+
+    recovered = CommandService().recover_jobs({"workspace": workspace, "run_id": run["id"]})
+
+    assert recovered["ok"] is True
+    assert recovered["job_count"] == 1
+    job = recovered["jobs"][0]
+    assert job["task_id"] == task.id
+    assert job["source_of_truth"] == "sqlite"
+    assert job["context_bundle_path"].endswith(".json")
+    assert job["context_bundle_hash"]
+    assert job["evidence_id"].startswith("evidence_")
+    bundle_path = Path(job["context_bundle_path"])
+    assert bundle_path.exists()
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    assert bundle["task_id"] == task.id
+    assert bundle["constraints"]["executor_native_session_required"] is False
+    assert bundle["approved_plan"]["title"] == "Recovery plan"
+
+    status = CommandService().status({"workspace": workspace, "run_id": run["id"]})
+    assert status["evidence"][-1]["type"] == "recovery_context_bundle"
+    assert status["evidence"][-1]["relationships"]["recovery_mode"] == "regenerate_context_bundle"
+    assert status["audit"][-1]["action"] == "recovery.planned"
+    assert status["audit"][-1]["payload"]["job_count"] == 1
+    assert status["audit"][-1]["payload"]["jobs"][0]["context_bundle_path"] == str(bundle_path)
+
+    report = CommandService().report({"workspace": workspace, "run_id": run["id"]})["text"]
+    assert "## Recovery plan" in report
+    assert "Restartable jobs: 1" in report
+    assert str(bundle_path) in report

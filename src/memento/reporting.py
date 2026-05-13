@@ -59,6 +59,21 @@ def _render_pause_cancel_recovery(status: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _render_recovery_plan(status: dict[str, Any]) -> list[str]:
+    recovery_events = [event for event in status.get("audit", []) if event.get("action") == "recovery.planned"]
+    if not recovery_events:
+        return []
+    payload = recovery_events[-1].get("payload", {})
+    jobs = list(payload.get("jobs") or [])
+    lines = ["", "## Recovery plan", f"Restartable jobs: {payload.get('job_count', len(jobs))}"]
+    for job in jobs:
+        bundle_path = job.get("context_bundle_path") or "not generated"
+        lines.append(f"- {job.get('task_id')}: {job.get('status')} → {job.get('recovery_mode')} ({bundle_path})")
+    if not jobs:
+        lines.append("- none")
+    return lines
+
+
 def render_status(status: dict[str, Any]) -> str:
     if not status.get("ok"):
         return f"## Memento status\nState: error\nError: {status.get('error', 'unknown')}"
@@ -89,6 +104,7 @@ def render_status(status: dict[str, Any]) -> str:
             f"Next action: {next_action}",
             *_render_role_latest_actions(audit),
             *_render_pause_cancel_recovery(status),
+            *_render_recovery_plan(status),
         ]
     )
 

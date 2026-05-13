@@ -1114,17 +1114,61 @@ class CommandService:
     def recover_jobs(self, args: dict[str, Any]) -> dict[str, Any]:
         store = self._store_for(args)
         run_id = str(args["run_id"])
-        if store.get_run(run_id) is None:
+        run = store.get_run(run_id)
+        if run is None:
             return {"ok": False, "command": "recover-jobs", "error": "run_not_found", "run_id": run_id}
         jobs = recover_dispatch_jobs(store, run_id)
+        recovered_jobs: list[dict[str, Any]] = []
+        for job in jobs:
+            task = store.get_task(str(job["task_id"]))
+            if task is None:
+                recovered_jobs.append({**job, "error": "task_not_found"})
+                continue
+            bundle = build_context_bundle(
+                store=store,
+                run=run,
+                task=task,
+                memory_summary=str(args.get("memory_summary") or ""),
+                graph_context={"state": graph_status(run.workspace)["state"]},
+            )
+            bundle_path = write_context_bundle(run.workspace, bundle)
+            evidence = store.save_evidence(
+                Evidence(
+                    run_id=run_id,
+                    kind="recovery_context_bundle",
+                    type="recovery_context_bundle",
+                    summary=f"Recovery context bundle regenerated for {task.title}.",
+                    uri=str(bundle_path),
+                    task_id=task.id,
+                    trust_level="trusted",
+                    status="passed",
+                    source={"kind": "memento", "source_of_truth": store.source_of_truth},
+                    content_ref={"kind": "file", "uri": str(bundle_path), "sha256": bundle["bundle_hash"]},
+                    relationships={
+                        "recovery_mode": job["recovery_mode"],
+                        "native_session_required": job["native_session_required"],
+                        "task_status": job["status"],
+                    },
+                )
+            )
+            recovered_jobs.append(
+                {
+                    **job,
+                    "source_of_truth": store.source_of_truth,
+                    "context_bundle_id": bundle["id"],
+                    "context_bundle_hash": bundle["bundle_hash"],
+                    "context_bundle_path": str(bundle_path),
+                    "evidence_id": evidence.id,
+                }
+            )
         store.append_audit(
             run_id,
             actor="memento_lifecycle_worker",
             action="recovery.planned",
-            summary=f"Recovered {len(jobs)} restartable job(s) from canonical state.",
-            payload={"job_count": len(jobs)},
+            summary=f"Recovered {len(recovered_jobs)} restartable job(s) from canonical state.",
+            payload={"job_count": len(recovered_jobs), "jobs": recovered_jobs},
         )
-        return {"ok": True, "command": "recover-jobs", "jobs": jobs}
+        return {"ok": True, "command": "recover-jobs", "job_count": len(recovered_jobs), "jobs": recovered_jobs}
 
     def add_evidence(self, run_id: str, *, kind: str, summary: str, uri: str | None = None) -> Evidence:
         store = self._store_for({})

@@ -259,11 +259,13 @@ memento release-gate \
 
 ### `recover-jobs`
 
-Reconstruct restartable long-running worker jobs from canonical Memento state without requiring native worker session memory.
+Reconstruct restartable long-running worker jobs from canonical Memento state without requiring native worker session memory. The command regenerates a context bundle for each recoverable task, records trusted `recovery_context_bundle` evidence, and surfaces bundle paths in status/report audit output.
 
 ```bash
 memento recover-jobs --workspace /path/to/repo --run-id run_... --json
 ```
+
+Use the regenerated bundle path as the next disposable worker handoff; do not depend on an OpenCode/TUI/native session surviving the restart.
 
 ## Routing, graph, and memory
 

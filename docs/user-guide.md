@@ -98,7 +98,13 @@ memento report --workspace /path/to/repo --run-id run_...
 memento list-dispatches --workspace /path/to/repo --run-id run_... --json
 ```
 
-Reports are reconstructed from durable state and formatted for chat. If an executor session disappears, regenerate the context bundle instead of relying on the lost session:
+Reports are reconstructed from durable state and formatted for chat. If an executor session disappears, regenerate recovery handoff bundles from canonical state instead of relying on the lost session:
+
+```bash
+memento recover-jobs --workspace /path/to/repo --run-id run_... --json
+```
+
+For a single explicit worker handoff bundle, use:
 
 ```bash
 memento context-bundle --workspace /path/to/repo --run-id run_... --task-id task_... --json
