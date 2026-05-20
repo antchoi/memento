@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ast
 import importlib
+import importlib.metadata
+import importlib.resources
 import tomllib
 from dataclasses import replace
 from pathlib import Path
@@ -103,6 +105,49 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _source_project_root() -> Path | None:
+    root = _project_root()
+    return root if (root / "pyproject.toml").exists() else None
+
+
+def _project_metadata() -> dict[str, Any]:
+    source_root = _source_project_root()
+    if source_root is not None:
+        try:
+            return tomllib.loads((source_root / "pyproject.toml").read_text(encoding="utf-8"))[
+                "project"
+            ]
+        except Exception:
+            pass
+    try:
+        metadata = importlib.metadata.metadata("memento-lifecycle")
+        scripts = {"memento": "memento.cli:main"}
+        entry_points = {"hermes_agent.plugins": {"memento": "memento.plugin"}}
+        return {
+            "name": metadata.get("Name"),
+            "version": metadata.get("Version"),
+            "scripts": scripts,
+            "entry-points": entry_points,
+        }
+    except importlib.metadata.PackageNotFoundError:
+        return {}
+
+
+def _bundled_skill_files() -> list[Path]:
+    source_root = _source_project_root()
+    if source_root is not None:
+        return sorted((source_root / "skills").glob("*/SKILL.md"))
+    try:
+        root = importlib.resources.files("memento") / "bundled_skills"
+        return sorted(
+            Path(str(path / "SKILL.md"))
+            for path in root.iterdir()
+            if path.is_dir() and (path / "SKILL.md").is_file()
+        )
+    except Exception:
+        return []
+
+
 def _package_import_check() -> dict[str, Any]:
     try:
         module = importlib.import_module("memento")
@@ -116,10 +161,9 @@ def _package_import_check() -> dict[str, Any]:
 
 
 def _cli_entrypoint_check() -> dict[str, Any]:
-    pyproject_path = _project_root() / "pyproject.toml"
     try:
-        pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-        target = pyproject["project"]["scripts"]["memento"]
+        project = _project_metadata()
+        target = project["scripts"]["memento"]
     except Exception as exc:  # pragma: no cover - defensive diagnostic path
         return {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
     return {
@@ -130,10 +174,9 @@ def _cli_entrypoint_check() -> dict[str, Any]:
 
 
 def _hermes_plugin_entrypoint_check() -> dict[str, Any]:
-    pyproject_path = _project_root() / "pyproject.toml"
     try:
-        pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-        target = pyproject["project"]["entry-points"]["hermes_agent.plugins"]["memento"]
+        project = _project_metadata()
+        target = project["entry-points"]["hermes_agent.plugins"]["memento"]
     except Exception as exc:  # pragma: no cover - defensive diagnostic path
         return {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
     return {
@@ -180,7 +223,10 @@ def _workspace_writable_check(workspace: Path) -> dict[str, Any]:
 
 
 def _runtime_gitignored_check() -> dict[str, Any]:
-    gitignore_path = _project_root() / ".gitignore"
+    source_root = _source_project_root()
+    if source_root is None:
+        return {"status": "ok", "mode": "installed_package", "missing": []}
+    gitignore_path = source_root / ".gitignore"
     text = gitignore_path.read_text(encoding="utf-8") if gitignore_path.exists() else ""
     required = (".memento/", ".hermes/runtime/", ".ouroboros/data/", ".ouroboros/runs/")
     missing = [pattern for pattern in required if pattern not in text]
@@ -188,21 +234,27 @@ def _runtime_gitignored_check() -> dict[str, Any]:
 
 
 def _bundled_skills_check() -> dict[str, Any]:
-    skills_dir = _project_root() / "skills"
+    source_root = _source_project_root()
     offenders: dict[str, str] = {}
-    skill_files = sorted(skills_dir.glob("*/SKILL.md"))
+    skill_files = _bundled_skill_files()
     for path in skill_files:
         text = path.read_text(encoding="utf-8")
         if not text.startswith("---\n"):
-            offenders[str(path.relative_to(_project_root()))] = "missing_frontmatter_open"
+            offenders[str(path.relative_to(source_root)) if source_root else str(path)] = (
+                "missing_frontmatter_open"
+            )
             continue
         try:
             _, frontmatter, _body = text.split("---", maxsplit=2)
         except ValueError:
-            offenders[str(path.relative_to(_project_root()))] = "missing_frontmatter_close"
+            offenders[str(path.relative_to(source_root)) if source_root else str(path)] = (
+                "missing_frontmatter_close"
+            )
             continue
         if "name:" not in frontmatter or "description:" not in frontmatter:
-            offenders[str(path.relative_to(_project_root()))] = "missing_name_or_description"
+            offenders[str(path.relative_to(source_root)) if source_root else str(path)] = (
+                "missing_name_or_description"
+            )
     return {
         "status": "ok" if skill_files and not offenders else "blocked",
         "count": len(skill_files),
@@ -343,7 +395,9 @@ class CommandService:
                 "run_id": run_id,
                 "title": "Sample canonical plan",
                 "body": "Approve a minimal plan before exercising executor dispatch.",
-                "acceptance_criteria": ["sample task dispatch completes through the outbox lifecycle"],
+                "acceptance_criteria": [
+                    "sample task dispatch completes through the outbox lifecycle"
+                ],
             }
         )
         approve_result = self.approve_plan(
@@ -412,7 +466,9 @@ class CommandService:
             run = store.get_run(run_id)
             if run is None:
                 return {"ok": False, "error": "run_not_found", "run_id": run_id}
-            gate_result = self._execution_gate_result(store, run, command="start", allow_spike=bool(args.get("allow_spike")))
+            gate_result = self._execution_gate_result(
+                store, run, command="start", allow_spike=bool(args.get("allow_spike"))
+            )
             if gate_result is not None:
                 return gate_result
             run = store.set_run_status(run.id, RunStatus.ACTIVE)
@@ -423,7 +479,9 @@ class CommandService:
         workspace = str(args.get("workspace") or Path.cwd())
         if not goal:
             return {"ok": False, "error": "goal_required"}
-        run = store.create_run(goal=goal, workspace=workspace, actor=str(args.get("actor") or "founder_user"))
+        run = store.create_run(
+            goal=goal, workspace=workspace, actor=str(args.get("actor") or "founder_user")
+        )
         store.append_audit(run.id, actor="founder_user", action="run.created", summary=goal)
         if args.get("allow_spike"):
             store.append_audit(
@@ -539,7 +597,12 @@ class CommandService:
         from .reporting import render_report
 
         status = self.status(args)
-        return {**status, "command": "report", "text": render_report(status), "generated_at": utc_now()}
+        return {
+            **status,
+            "command": "report",
+            "text": render_report(status),
+            "generated_at": utc_now(),
+        }
 
     def enqueue_event(self, args: dict[str, Any]) -> dict[str, Any]:
         """Create/update durable work from cron/webhook payloads without execution."""
@@ -582,13 +645,17 @@ class CommandService:
             return gate_result
         workspace = Path(payload.repo_path)
         executor = str(args.get("executor") or "hermes-profile")
-        adapter = OutboxExecutorAdapter(args.get("outbox_path") or OutboxExecutorAdapter.default_path(workspace))
+        adapter = OutboxExecutorAdapter(
+            args.get("outbox_path") or OutboxExecutorAdapter.default_path(workspace)
+        )
         worktree = None
         if args.get("isolated_worktree"):
             task = store.get_task(payload.task_id)
             if task is None:
                 return {"ok": False, "error": "task_not_found", "command": "dispatch-task"}
-            worktree = create_isolated_worktree(workspace, task, dry_run=not bool(args.get("create_worktree")))
+            worktree = create_isolated_worktree(
+                workspace, task, dry_run=not bool(args.get("create_worktree"))
+            )
             if bool(args.get("create_worktree")) and not worktree.get("created"):
                 return {
                     "ok": False,
@@ -649,13 +716,19 @@ class CommandService:
             return {"ok": True, "command": "claim-dispatch", **dispatch}
         adapter.append_event("dispatch.claimed", dispatch_id, executor=executor)
         store = self._store_for(args)
-        self._set_task_status(store, str(dispatch["run_id"]), str(dispatch["task_id"]), TaskStatus.IN_PROGRESS)
+        self._set_task_status(
+            store, str(dispatch["run_id"]), str(dispatch["task_id"]), TaskStatus.IN_PROGRESS
+        )
         store.append_audit(
             str(dispatch["run_id"]),
             actor=executor,
             action="task.dispatch_claimed",
             summary=f"Claimed dispatch {dispatch_id}",
-            payload={"dispatch_id": dispatch_id, "task_id": dispatch["task_id"], "executor_invoked": False},
+            payload={
+                "dispatch_id": dispatch_id,
+                "task_id": dispatch["task_id"],
+                "executor_invoked": False,
+            },
         )
         claimed = adapter.get_dispatch(dispatch_id)
         return {"ok": True, "command": "claim-dispatch", **claimed}
@@ -678,11 +751,19 @@ class CommandService:
         run_id = str(dispatch["run_id"])
         task_id = str(dispatch["task_id"])
         evidence = store.save_evidence(
-            Evidence(run_id=run_id, kind="dispatch_result", summary=summary, uri=evidence_uri, task_id=task_id)
+            Evidence(
+                run_id=run_id,
+                kind="dispatch_result",
+                summary=summary,
+                uri=evidence_uri,
+                task_id=task_id,
+            )
         )
         store.append_audit(
             run_id,
-            actor=str(dispatch.get("claimed_by") or dispatch.get("executor") or "hephaestus_executor"),
+            actor=str(
+                dispatch.get("claimed_by") or dispatch.get("executor") or "hephaestus_executor"
+            ),
             action="evidence.added",
             summary=summary,
             payload={"dispatch_id": dispatch_id, "evidence_id": evidence.id},
@@ -705,7 +786,12 @@ class CommandService:
             payload={"dispatch_id": dispatch_id, "task_id": task_id, "executor_invoked": False},
         )
         completed = adapter.get_dispatch(dispatch_id)
-        result = {"ok": True, "command": "complete-dispatch", **completed, "evidence": evidence.to_record()}
+        result = {
+            "ok": True,
+            "command": "complete-dispatch",
+            **completed,
+            "evidence": evidence.to_record(),
+        }
         if graph_update is not None:
             result["graph_update"] = graph_update
         return result
@@ -762,8 +848,17 @@ class CommandService:
                 action="execution.blocked",
                 summary="Canonical plan required before execution.",
             )
-            return {"ok": False, "command": command, "error": "canonical_plan_required", "run": run.to_record()}
-        blocking_gates = [gate.to_record() for gate in store.list_gates(run.id) if gate.status == GateStatus.FAILED]
+            return {
+                "ok": False,
+                "command": command,
+                "error": "canonical_plan_required",
+                "run": run.to_record(),
+            }
+        blocking_gates = [
+            gate.to_record()
+            for gate in store.list_gates(run.id)
+            if gate.status == GateStatus.FAILED
+        ]
         if blocking_gates:
             blocked_run = store.set_run_status(run.id, RunStatus.BLOCKED)
             store.append_audit(
@@ -791,7 +886,9 @@ class CommandService:
     def _set_task_status(
         self, store: SQLiteStateStore, run_id: str, task_id: str, status: TaskStatus
     ) -> None:
-        task = next((candidate for candidate in store.list_tasks(run_id) if candidate.id == task_id), None)
+        task = next(
+            (candidate for candidate in store.list_tasks(run_id) if candidate.id == task_id), None
+        )
         if task is None:
             raise KeyError(f"task not found: {task_id}")
         store.save_task(replace(task, status=status, updated_at=utc_now()))
@@ -802,7 +899,9 @@ class CommandService:
         if run is None:
             return {"ok": False, "error": "run_not_found"}
         task_id = str(args["task_id"])
-        task = next((candidate for candidate in store.list_tasks(run.id) if candidate.id == task_id), None)
+        task = next(
+            (candidate for candidate in store.list_tasks(run.id) if candidate.id == task_id), None
+        )
         if task is None:
             return {"ok": False, "error": "task_not_found", "task_id": task_id}
         return {"ok": True, "payload": build_worker_payload(run, task)}
@@ -832,7 +931,11 @@ class CommandService:
                 summary=f"Context bundle generated for {task.title}",
                 uri=str(bundle_path),
                 task_id=task.id,
-                content_ref={"kind": "file", "uri": str(bundle_path), "sha256": bundle["bundle_hash"]},
+                content_ref={
+                    "kind": "file",
+                    "uri": str(bundle_path),
+                    "sha256": bundle["bundle_hash"],
+                },
             )
         )
         return {
@@ -864,7 +967,12 @@ class CommandService:
                 content_ref={"kind": "inline", "decision": decision},
             )
         )
-        return {"ok": True, "command": "route-task", "decision": decision, "evidence": evidence.to_record()}
+        return {
+            "ok": True,
+            "command": "route-task",
+            "decision": decision,
+            "evidence": evidence.to_record(),
+        }
 
     def verify_task(self, args: dict[str, Any]) -> dict[str, Any]:
         store = self._store_for(args)
@@ -875,7 +983,11 @@ class CommandService:
         return {"ok": True, "command": "verify-task", **verdict}
 
     def graph_status(self, args: dict[str, Any]) -> dict[str, Any]:
-        return {"ok": True, "command": "graph-status", "graphify": graph_status(args.get("workspace") or Path.cwd())}
+        return {
+            "ok": True,
+            "command": "graph-status",
+            "graphify": graph_status(args.get("workspace") or Path.cwd()),
+        }
 
     def graph_update(self, args: dict[str, Any]) -> dict[str, Any]:
         store = self._store_for(args)
@@ -905,21 +1017,30 @@ class CommandService:
         store = self._store_for(args)
         run_id = str(args["run_id"])
         if store.get_run(run_id) is None:
-            return {"ok": False, "command": "record-external-check", "error": "run_not_found", "run_id": run_id}
+            return {
+                "ok": False,
+                "command": "record-external-check",
+                "error": "run_not_found",
+                "run_id": run_id,
+            }
         provider = str(args.get("provider") or "").strip()
         if not provider:
             return {"ok": False, "command": "record-external-check", "error": "provider_required"}
         payload = {
             key: value
             for key, value in {
-                "run_id": args.get("external_run_id") or args.get("external_check_id") or args.get("ci_run_id"),
+                "run_id": args.get("external_run_id")
+                or args.get("external_check_id")
+                or args.get("ci_run_id"),
                 "status": args.get("status"),
                 "conclusion": args.get("conclusion"),
                 "url": args.get("url") or args.get("evidence_uri"),
             }.items()
             if value not in (None, "")
         }
-        evidence = save_external_check_evidence(store, run_id=run_id, provider=provider, payload=payload)
+        evidence = save_external_check_evidence(
+            store, run_id=run_id, provider=provider, payload=payload
+        )
         store.append_audit(
             run_id,
             actor="memento_lifecycle_worker",
@@ -933,7 +1054,12 @@ class CommandService:
         store = self._store_for(args)
         run_id = str(args["run_id"])
         if store.get_run(run_id) is None:
-            return {"ok": False, "command": "record-approval", "error": "run_not_found", "run_id": run_id}
+            return {
+                "ok": False,
+                "command": "record-approval",
+                "error": "run_not_found",
+                "run_id": run_id,
+            }
         actor = str(args.get("actor") or args.get("reviewer") or "founder_user")
         scope = dict(args.get("scope") or {})
         if not scope:
@@ -964,7 +1090,12 @@ class CommandService:
         store = self._store_for(args)
         run_id = str(args["run_id"])
         if store.get_run(run_id) is None:
-            return {"ok": False, "command": "release-gate", "error": "run_not_found", "run_id": run_id}
+            return {
+                "ok": False,
+                "command": "release-gate",
+                "error": "run_not_found",
+                "run_id": run_id,
+            }
         required_checks = tuple(args.get("required_checks") or ())
         if isinstance(args.get("required_checks"), str):
             required_checks = tuple(
@@ -982,7 +1113,9 @@ class CommandService:
             run_id,
             actor="memento_lifecycle_worker",
             action="release_gate.checked",
-            summary="Release gate satisfied." if result["ok"] else "Release gate missing required evidence.",
+            summary="Release gate satisfied."
+            if result["ok"]
+            else "Release gate missing required evidence.",
             payload={
                 "required_checks": list(required_checks),
                 "required_approvals": required_approvals,
@@ -996,11 +1129,20 @@ class CommandService:
         store = self._store_for(args)
         run_id = str(args["run_id"])
         if store.get_run(run_id) is None:
-            return {"ok": False, "command": "record-graph-diff", "error": "run_not_found", "run_id": run_id}
+            return {
+                "ok": False,
+                "command": "record-graph-diff",
+                "error": "run_not_found",
+                "run_id": run_id,
+            }
         before = dict(args.get("before_graph") or {})
         after = dict(args.get("after_graph") or {})
         if not before and not after:
-            return {"ok": False, "command": "record-graph-diff", "error": "graph_snapshots_required"}
+            return {
+                "ok": False,
+                "command": "record-graph-diff",
+                "error": "graph_snapshots_required",
+            }
         diff = detect_graph_regressions(before, after, blocking=bool(args.get("blocking")))
         warnings = list(diff.get("warnings") or [])
         evidence = store.save_evidence(
@@ -1018,7 +1160,11 @@ class CommandService:
                 trust_level="trusted",
                 source={"kind": "graphify", "checkpoint": "manual"},
                 content_ref={"kind": "inline", "diff": diff},
-                relationships={"warnings": warnings, "risk": diff["risk"], "blocking": diff["blocking"]},
+                relationships={
+                    "warnings": warnings,
+                    "risk": diff["risk"],
+                    "blocking": diff["blocking"],
+                },
             )
         )
         store.append_audit(
@@ -1028,13 +1174,23 @@ class CommandService:
             summary=evidence.summary,
             payload={"evidence_id": evidence.id, "warnings": warnings, "risk": diff["risk"]},
         )
-        return {"ok": True, "command": "record-graph-diff", "diff": diff, "evidence": evidence.to_record()}
+        return {
+            "ok": True,
+            "command": "record-graph-diff",
+            "diff": diff,
+            "evidence": evidence.to_record(),
+        }
 
     def select_patch(self, args: dict[str, Any]) -> dict[str, Any]:
         store = self._store_for(args)
         run_id = str(args["run_id"])
         if store.get_run(run_id) is None:
-            return {"ok": False, "command": "select-patch", "error": "run_not_found", "run_id": run_id}
+            return {
+                "ok": False,
+                "command": "select-patch",
+                "error": "run_not_found",
+                "run_id": run_id,
+            }
         candidates = list(args.get("candidates") or ())
         if not candidates:
             return {"ok": False, "command": "select-patch", "error": "candidates_required"}
@@ -1116,7 +1272,12 @@ class CommandService:
         run_id = str(args["run_id"])
         run = store.get_run(run_id)
         if run is None:
-            return {"ok": False, "command": "recover-jobs", "error": "run_not_found", "run_id": run_id}
+            return {
+                "ok": False,
+                "command": "recover-jobs",
+                "error": "run_not_found",
+                "run_id": run_id,
+            }
         jobs = recover_dispatch_jobs(store, run_id)
         recovered_jobs: list[dict[str, Any]] = []
         requeued_dispatch_ids: list[str] = []
@@ -1147,7 +1308,11 @@ class CommandService:
                     trust_level="trusted",
                     status="passed",
                     source={"kind": "memento", "source_of_truth": store.source_of_truth},
-                    content_ref={"kind": "file", "uri": str(bundle_path), "sha256": bundle["bundle_hash"]},
+                    content_ref={
+                        "kind": "file",
+                        "uri": str(bundle_path),
+                        "sha256": bundle["bundle_hash"],
+                    },
                     relationships={
                         "recovery_mode": job["recovery_mode"],
                         "native_session_required": job["native_session_required"],
@@ -1171,7 +1336,9 @@ class CommandService:
                     and dispatch.get("task_id") == task.id
                     and dispatch.get("status") in {"queued", "claimed"}
                 ]
-                recovered_dispatch_ids = [str(dispatch["dispatch_id"]) for dispatch in active_dispatches]
+                recovered_dispatch_ids = [
+                    str(dispatch["dispatch_id"]) for dispatch in active_dispatches
+                ]
                 redispatch = adapter.dispatch(
                     ExecutorDispatchRequest(
                         payload=build_worker_payload(run, task),
@@ -1223,10 +1390,19 @@ class CommandService:
                     "job_count": len(recovered_jobs),
                 },
             )
-        return {"ok": True, "command": "recover-jobs", "job_count": len(recovered_jobs), "jobs": recovered_jobs}
+        return {
+            "ok": True,
+            "command": "recover-jobs",
+            "job_count": len(recovered_jobs),
+            "jobs": recovered_jobs,
+        }
 
-    def add_evidence(self, run_id: str, *, kind: str, summary: str, uri: str | None = None) -> Evidence:
+    def add_evidence(
+        self, run_id: str, *, kind: str, summary: str, uri: str | None = None
+    ) -> Evidence:
         store = self._store_for({})
         evidence = store.save_evidence(Evidence(run_id=run_id, kind=kind, summary=summary, uri=uri))
-        store.append_audit(run_id, actor="hephaestus_executor", action="evidence.added", summary=summary)
+        store.append_audit(
+            run_id, actor="hephaestus_executor", action="evidence.added", summary=summary
+        )
         return evidence

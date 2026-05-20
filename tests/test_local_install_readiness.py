@@ -85,3 +85,40 @@ def test_local_verification_script_documents_release_candidate_smoke() -> None:
     assert "python -m compileall -q src tests" in script
     assert "python -m memento.cli doctor --json" in script
     assert "python -m memento.cli sample-smoke --workspace" in script
+
+
+def test_built_wheel_doctor_works_without_source_checkout(tmp_path: Path) -> None:
+    dist_dir = tmp_path / "dist"
+    venv_dir = tmp_path / "wheel-venv"
+    subprocess.run(
+        [sys.executable, "-m", "build", "--wheel", "--outdir", str(dist_dir)],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    wheel = next(dist_dir.glob("memento_lifecycle-*.whl"))
+    subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
+    python = venv_dir / "bin" / "python"
+    memento = venv_dir / "bin" / "memento"
+    subprocess.run(
+        [str(python), "-m", "pip", "install", str(wheel)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    doctor = subprocess.run(
+        [str(memento), "doctor", "--workspace", str(tmp_path / "workspace"), "--json"],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    payload = json.loads(doctor.stdout)
+
+    assert payload["ok"] is True
+    assert payload["version"] == "0.1.1"
+    assert payload["checks"]["cli_entrypoint"] == "ok"
+    assert payload["checks"]["plugin_register_smoke"] == "ok"
+    assert payload["checks"]["bundled_skills"] == "ok"
+    assert payload["checks"]["bundled_skill_count"] >= 4

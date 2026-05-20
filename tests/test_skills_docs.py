@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 
-REQUIRED_SKILLS = ("memento-lifecycle-worker", "metis-planner", "momus-reviewer")
+REQUIRED_SKILLS = (
+    "memento-lifecycle-worker",
+    "metis-planner",
+    "momus-reviewer",
+    "truthforge-method",
+)
 
 
 def _frontmatter(path: Path) -> dict[str, str]:
