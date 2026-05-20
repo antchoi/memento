@@ -1,5 +1,7 @@
 # Memento
 
+English | [한국어](README.ko.md)
+
 Memento is a Hermes-native lifecycle and evidence ledger for software work: it turns vague goals into durable runs, plans, tasks, review gates, dispatch records, and verification evidence that survive chat resets, process restarts, and disposable executor sessions.
 
 ## Why Memento exists
