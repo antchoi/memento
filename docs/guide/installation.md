@@ -267,9 +267,9 @@ memento complete-dispatch --workspace /path/to/repo --dispatch-id dispatch_... -
 memento report --workspace /path/to/repo --run-id run_...
 ```
 
-## Verification checklist for agents
+## Verification checklist for Hermes Agent sessions
 
-Before reporting success, prove all of these:
+Before reporting success from a Hermes Agent session, prove all of these:
 
 ```bash
 git status --short
