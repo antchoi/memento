@@ -1,4 +1,4 @@
-# Memento Documentation
+# <img src="assets/memento-logo.png" alt="Memento logo" width="36"> Memento Documentation
 
 This directory explains how to use, operate, and extend Memento.
 

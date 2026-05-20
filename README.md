@@ -1,4 +1,4 @@
-# Memento
+# <img src="docs/assets/memento-logo.png" alt="Memento logo" width="36"> Memento
 
 English | [한국어](README.ko.md)
 
