@@ -32,14 +32,47 @@ Memento **is not**:
 - a tool that treats executor self-report as proof;
 - dependent on private TUI/session state for correctness.
 
-## Quick install
-
-From the repository root:
+## Install from PyPI
 
 ```bash
-python -m pip install -e .
-python -m pip install -e '.[dev]'  # optional: pytest and ruff
+python -m pip install memento-lifecycle
 memento doctor --json
+memento sample-smoke --workspace /tmp/memento-sample --json
+```
+
+The PyPI distribution is `memento-lifecycle`; the installed CLI and Python package remain `memento`.
+
+## Installation
+
+### For humans
+
+Copy and paste this prompt into Hermes Agent, Claude Code, Codex, OpenCode, or another local coding agent:
+
+```text
+Install and verify Memento by following the instructions here:
+https://raw.githubusercontent.com/antchoi/memento/main/docs/guide/installation.md
+```
+
+Or read the [Installation Guide](docs/guide/installation.md). It is written as an executable checklist for agents: create a virtualenv, install dependencies, run `doctor`, run the smoke contract, and report evidence.
+
+### For LLM agents
+
+Fetch the installation guide and follow it exactly:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/antchoi/memento/main/docs/guide/installation.md
+```
+
+If you are already in a checkout, the default one-command path is:
+
+```bash
+scripts/install-local.sh --dev
+```
+
+For a minimal runtime install without development extras:
+
+```bash
+scripts/install-local.sh
 ```
 
 Without installing the console script:
@@ -47,6 +80,23 @@ Without installing the console script:
 ```bash
 PYTHONPATH=src python -m memento.cli doctor --json
 ```
+
+### Optional: local agentmemory for Hermes Agent
+
+For cross-session/cross-agent memory, run `agentmemory` locally on the Hermes Agent machine with Docker and connect Hermes through MCP:
+
+```bash
+scripts/install-local.sh --agentmemory
+```
+
+Then add the MCP server shown in [`docs/guide/installation.md`](docs/guide/installation.md#connect-hermes-to-agentmemory-via-mcp), restart Hermes, and verify with:
+
+```bash
+hermes mcp list
+hermes mcp test agentmemory
+```
+
+Keep agentmemory ports bound to localhost unless you explicitly choose remote exposure.
 
 ## Start in 5 minutes
 
@@ -157,7 +207,9 @@ ctx.register_command(name, handler, **metadata)
 Start here:
 
 - [`docs/README.md`](docs/README.md) — documentation map.
-- [`docs/getting-started.md`](docs/getting-started.md) — install, smoke test, and first run.
+- [`docs/guide/installation.md`](docs/guide/installation.md) — agent-executable installation, dependency setup, Hermes plugin enablement, and local agentmemory Docker integration.
+- [`docs/guide/publishing.md`](docs/guide/publishing.md) — PyPI/TestPyPI release checklist and GitHub Actions Trusted Publishing setup.
+- [`docs/getting-started.md`](docs/getting-started.md) — first smoke test and first run after installation.
 - [`docs/concepts.md`](docs/concepts.md) — lifecycle concepts and trust model.
 - [`docs/commands.md`](docs/commands.md) — command reference by workflow.
 - [`docs/operators-guide.md`](docs/operators-guide.md) — safety, recovery, cron/events, reporting.

@@ -1,6 +1,6 @@
 # Getting Started with Memento
 
-This guide takes you from a fresh checkout to a verified local Memento run.
+This guide takes you from an installed Memento checkout to a verified local Memento run. If you have not installed Memento yet, start with [`guide/installation.md`](guide/installation.md); it includes an agent-executable install script, dependency setup, Hermes plugin notes, and optional local agentmemory Docker integration.
 
 ## Prerequisites
 
@@ -10,14 +10,20 @@ This guide takes you from a fresh checkout to a verified local Memento run.
 
 ## Install
 
-From the repository root:
+Preferred agent-executable path from the repository root:
+
+```bash
+scripts/install-local.sh
+```
+
+Manual equivalent:
 
 ```bash
 python -m pip install -e .
 python -m pip install -e '.[dev]'
 ```
 
-If you do not want to install the package yet, prefix CLI examples with `PYTHONPATH=src python -m memento.cli` instead of `memento`.
+See [`guide/installation.md`](guide/installation.md) for virtualenv creation, dependency automation, Hermes plugin enablement, and optional agentmemory setup.
 
 ## Verify readiness
 
