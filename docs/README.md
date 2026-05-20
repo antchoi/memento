@@ -4,7 +4,7 @@ This directory explains how to use, operate, and extend Memento.
 
 ## Recommended reading path
 
-1. [`guide/installation.md`](guide/installation.md) — install Memento, optionally enable the Hermes plugin, optionally start local agentmemory with Docker, and verify with executable evidence.
+1. [`guide/installation.md`](guide/installation.md) — install Memento with a Hermes Agent-oriented checklist, optionally enable the Hermes plugin, optionally start local agentmemory with Docker, and verify with executable evidence.
 2. [`guide/publishing.md`](guide/publishing.md) — publish `memento-lifecycle` to TestPyPI/PyPI and configure GitHub Actions Trusted Publishing.
 3. [`getting-started.md`](getting-started.md) — run `sample-smoke` and create a first durable run after installation.
 4. [`concepts.md`](concepts.md) — understand runs, plans, tasks, dispatches, gates, evidence, and reports.
@@ -16,7 +16,7 @@ This directory explains how to use, operate, and extend Memento.
 ## What belongs where
 
 - **README:** first-success path and project positioning.
-- **Installation guide:** executable setup, dependency installation, Hermes plugin enablement, and optional agentmemory Docker integration.
+- **Installation guide:** Hermes Agent-oriented executable setup, dependency installation, Hermes plugin enablement, and optional agentmemory Docker integration.
 - **Publishing guide:** TestPyPI/PyPI release flow, versioning rules, trusted publishing, and token handling.
 - **Getting started:** first smoke contract and first run after installation.
 - **Concepts:** stable mental model.

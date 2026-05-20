@@ -1,6 +1,6 @@
 # memento Architecture
 
-`memento` is a Hermes-native lifecycle plugin for durable planning, dispatch, evidence, and reporting. It deliberately avoids treating OpenCode/Codex/Claude Code process logs or TUIs as the core source of truth. Those tools can later be optional executor peers; the plugin state model remains Memento-owned.
+`memento` is a Hermes-native lifecycle plugin for durable planning, dispatch, evidence, and reporting. The supported public onboarding path is Hermes Agent. Memento deliberately avoids treating OpenCode/Codex/Claude Code process logs or TUIs as the core source of truth; those tools can later be optional executor peers only if explicit adapters are built. The plugin state model remains Memento-owned.
 
 ## Runtime boundary
 

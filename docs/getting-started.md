@@ -1,6 +1,6 @@
 # Getting Started with Memento
 
-This guide takes you from an installed Memento checkout to a verified local Memento run. If you have not installed Memento yet, start with [`guide/installation.md`](guide/installation.md); it includes an agent-executable install script, dependency setup, Hermes plugin notes, and optional local agentmemory Docker integration.
+This guide takes you from an installed Memento checkout to a verified local Memento run. If you have not installed Memento yet, start with [`guide/installation.md`](guide/installation.md); it includes a Hermes Agent-oriented install script, dependency setup, Hermes plugin notes, and optional local agentmemory Docker integration.
 
 ## Prerequisites
 
@@ -10,7 +10,7 @@ This guide takes you from an installed Memento checkout to a verified local Meme
 
 ## Install
 
-Preferred agent-executable path from the repository root:
+Preferred Hermes Agent-oriented path from the repository root:
 
 ```bash
 scripts/install-local.sh

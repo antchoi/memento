@@ -1,6 +1,8 @@
 # Installation Guide
 
-This guide is intentionally written so a human can read it, but an LLM agent can also execute it from top to bottom after Hermes Agent is already running.
+This guide is intentionally written so a human can read it, but it is optimized for Hermes Agent to execute from top to bottom after Hermes is already running.
+
+Scope note: this is a Hermes Agent installation guide. It is not an OpenCode, Codex, or Claude Code integration guide; those tools are not required and are not configured by this document.
 
 ## Copy-paste prompt for Hermes Agent
 
@@ -10,7 +12,7 @@ Paste this into a Hermes Agent session from the machine where you want to instal
 Install and verify Memento by following this guide:
 https://raw.githubusercontent.com/antchoi/memento/main/docs/guide/installation.md
 
-Use a Python 3.11+ virtualenv, run the install script, run the smoke verification, and report the exact commands and outputs that prove success. If I ask for agentmemory integration, run it locally with Docker on the Hermes agent machine and keep ports bound to localhost.
+Use a Python 3.11+ virtualenv, run the install script, run the smoke verification, and report the exact commands and outputs that prove success. If I ask for agentmemory integration, run it locally with Docker on the Hermes Agent machine and keep ports bound to localhost.
 ```
 
 If you are already in a local checkout, use the checked-out file instead:
@@ -167,7 +169,7 @@ hermes doctor
 hermes gateway restart || true
 ```
 
-Notes for agents:
+Notes for Hermes Agent sessions:
 
 - Do not use `hermes config set plugins.enabled '["memento"]'` unless you verify that the result is a YAML list, not a string.
 - Plugin/config changes require a fresh Hermes session or gateway restart.

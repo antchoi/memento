@@ -99,7 +99,7 @@ These are runtime artifacts, not a substitute for verified evidence.
 
 ## Optional executors
 
-Memento can hand work to executor peers, but it does not depend on them for correctness. Optional executor classes include:
+Memento can eventually hand work to executor peers, but it does not depend on them for correctness. In the current public installation path, Hermes Agent is the supported agent runtime. Other executors are future/experimental adapter targets only, not required setup steps. Possible optional executor classes include:
 
 - Hermes profile workers;
 - Codex;

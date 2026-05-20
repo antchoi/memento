@@ -51,7 +51,7 @@ Avoid:
 
 Observed shape:
 
-- README includes “For Humans” and “For LLM Agents” install paths.
+- README includes human-facing and Hermes Agent-facing install paths.
 - Strong disciplined-agent positioning around planning, review, and orchestration.
 - Clear personality/vision, but can be too hype-heavy for Memento’s current MVP state.
 

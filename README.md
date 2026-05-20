@@ -2,6 +2,8 @@
 
 English | [한국어](README.ko.md)
 
+![Memento banner](docs/assets/memento-banner.png)
+
 Memento is a Hermes-native lifecycle and evidence ledger for software work: it turns vague goals into durable runs, plans, tasks, review gates, dispatch records, and verification evidence that survive chat resets, process restarts, and disposable executor sessions.
 
 ## Why Memento exists
@@ -11,7 +13,7 @@ Agent coding often fails because progress lives in the wrong place: a chat trans
 Use Memento when you want to:
 
 - keep a canonical plan before implementation starts;
-- route work to humans, Hermes, or optional external executors without trusting their summaries blindly;
+- route work to humans or Hermes-controlled worker handoffs without trusting summaries blindly;
 - record evidence, review gates, approvals, and failures in project-local durable state;
 - recover long-running work after compaction, process restarts, or executor crashes;
 - report progress in Telegram-friendly Markdown without scraping logs.
@@ -24,11 +26,11 @@ Memento **is**:
 - a Hermes plugin entry point (`memento.plugin`);
 - a lifecycle state model for runs, plans, tasks, gates, dispatches, audit events, and evidence;
 - a local-first durability layer using project-local SQLite and JSON state;
-- an extension boundary for optional workers such as Hermes profiles, Codex, Claude Code, OpenCode, OpenHands-style API workers, or other peers.
+- an extension boundary for future optional worker adapters while keeping the lifecycle source of truth inside Memento.
 
 Memento **is not**:
 
-- an OpenCode wrapper;
+- an OpenCode, Codex, or Claude Code wrapper;
 - a compatibility shim for another lifecycle project;
 - a replacement for tests, review, or user approval;
 - a tool that treats executor self-report as proof;
@@ -46,18 +48,20 @@ The PyPI distribution is `memento-lifecycle`; the installed CLI and Python packa
 
 ## Installation
 
-### For humans
+The guided installation flow below is for **Hermes Agent**. Other coding assistants can read the shell commands manually, but Memento does not currently provide dedicated OpenCode, Codex, or Claude Code onboarding/integration.
 
-Copy and paste this prompt into Hermes Agent, Claude Code, Codex, OpenCode, or another local coding agent:
+### For humans using Hermes Agent
+
+Copy and paste this prompt into Hermes Agent:
 
 ```text
 Install and verify Memento by following the instructions here:
 https://raw.githubusercontent.com/antchoi/memento/main/docs/guide/installation.md
 ```
 
-Or read the [Installation Guide](docs/guide/installation.md). It is written as an executable checklist for agents: create a virtualenv, install dependencies, run `doctor`, run the smoke contract, and report evidence.
+Or read the [Installation Guide](docs/guide/installation.md). It is written as an executable checklist for Hermes Agent: create a virtualenv, install dependencies, run `doctor`, run the smoke contract, and report evidence.
 
-### For LLM agents
+### For Hermes Agent sessions
 
 Fetch the installation guide and follow it exactly:
 
@@ -209,7 +213,7 @@ ctx.register_command(name, handler, **metadata)
 Start here:
 
 - [`docs/README.md`](docs/README.md) — documentation map.
-- [`docs/guide/installation.md`](docs/guide/installation.md) — agent-executable installation, dependency setup, Hermes plugin enablement, and local agentmemory Docker integration.
+- [`docs/guide/installation.md`](docs/guide/installation.md) — Hermes Agent-oriented installation, dependency setup, Hermes plugin enablement, and local agentmemory Docker integration.
 - [`docs/guide/publishing.md`](docs/guide/publishing.md) — PyPI/TestPyPI release checklist and GitHub Actions Trusted Publishing setup.
 - [`docs/getting-started.md`](docs/getting-started.md) — first smoke test and first run after installation.
 - [`docs/concepts.md`](docs/concepts.md) — lifecycle concepts and trust model.

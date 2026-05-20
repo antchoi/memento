@@ -156,7 +156,7 @@ memento enqueue-event --workspace /path/to/repo --run-id run_... --title "Incomi
 
 ## Optional executor extension
 
-Optional executor extension adapters can live under `src/memento/executors/`. They are peer handoff targets, not the lifecycle source of truth. Core Memento should keep passing tests without OpenCode, Codex, Claude Code, OpenHands, or other external executor packages installed.
+Optional executor extension adapters can live under `src/memento/executors/`. They are future/experimental peer handoff targets, not the lifecycle source of truth and not part of the installation guide. Core Memento should keep passing tests without OpenCode, Codex, Claude Code, OpenHands, or other external executor packages installed.
 
 ## Full verification
 
