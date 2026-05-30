@@ -27,7 +27,7 @@ class ExecutorDispatchRequest:
     """Explicit request packet for an executor peer."""
 
     payload: WorkerPayload
-    executor: str = "hermes-profile"
+    executor: str = "oh-my-pi"
     reason: str = "extension point"
     invoke: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -206,6 +206,7 @@ class PeerExecutorAdapter:
     - ``hermes-profile[:profile]`` → ``hermes [--profile profile] chat -q ...``
     - ``opencode`` → ``opencode run ...``
     - ``codex`` → ``codex exec ...``
+    - ``oh-my-pi`` → ``omp -p --auto-approve --no-pty ...``
     - ``claude-code`` → ``claude -p ...``
 
     ``invoke`` must be true on the request for a process to be started.  The
@@ -318,6 +319,14 @@ class PeerExecutorAdapter:
             return ["goose", "run", prompt]
         if executor == "swe-agent":
             return ["swe-agent", "run", "--problem_statement", prompt]
+        if executor in {"oh-my-pi", "omp"}:
+            command = ["omp", "-p", "--auto-approve", "--no-pty"]
+            files = list(payload.relevant_files)
+            for f in files:
+                command.append(f"@{f}")
+            command.append(prompt)
+            return command
+
         if executor in {"claude", "claude-code"}:
             return ["claude", "-p", prompt]
         raise ValueError(f"unsupported executor peer: {request.executor}")

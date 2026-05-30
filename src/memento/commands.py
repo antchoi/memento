@@ -644,7 +644,7 @@ class CommandService:
         if gate_result is not None:
             return gate_result
         workspace = Path(payload.repo_path)
-        executor = str(args.get("executor") or "hermes-profile")
+        executor = str(args.get("executor") or "oh-my-pi")
         adapter = OutboxExecutorAdapter(
             args.get("outbox_path") or OutboxExecutorAdapter.default_path(workspace)
         )
@@ -709,7 +709,7 @@ class CommandService:
             return {"ok": False, "error": "dispatch_not_found", "dispatch_id": dispatch_id}
         if dispatch["status"] in {"completed", "failed", "recovered"}:
             return {"ok": False, "error": "dispatch_terminal", **dispatch}
-        executor = str(args.get("executor") or dispatch.get("executor") or "hermes-profile")
+        executor = str(args.get("executor") or dispatch.get("executor") or "oh-my-pi")
         if dispatch["status"] == "claimed" and dispatch.get("claimed_by") != executor:
             return {"ok": False, "error": "dispatch_already_claimed", **dispatch}
         if dispatch["status"] == "claimed":
@@ -1283,7 +1283,7 @@ class CommandService:
         requeued_dispatch_ids: list[str] = []
         adapter = self._outbox_adapter_for(args)
         should_requeue = bool(args.get("requeue"))
-        requeue_executor = str(args.get("executor") or "hermes-profile")
+        requeue_executor = str(args.get("executor") or "oh-my-pi")
         for job in jobs:
             task = store.get_task(str(job["task_id"]))
             if task is None:
