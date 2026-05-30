@@ -99,6 +99,21 @@ def main(argv: list[str] | None = None) -> int:
         print(render_status(result))
     elif args.command == "report":
         print(result.get("text") or render_report(result))
+    elif args.command == "update":
+        print(f"memento {__version__}: update")
+        for step in result.get("steps", []):
+            status = "OK" if step.get("ok") else "FAIL"
+            print(f"  [{status}] {step['step']}")
+            if "output" in step:
+                print(f"      {step['output']}")
+            if "error" in step:
+                print(f"      Error: {step['error']}")
+            if "note" in step:
+                print(f"      Note: {step['note']}")
+        version = result.get("version", {})
+        print(f"  Version: {version.get('previous')}")
+        if version.get("note"):
+            print(f"  {version['note']}")
     else:
         status = "ok" if result.get("ok") else f"error: {result.get('error', 'unknown')}"
         print(f"memento {__version__}: {args.command} {status}")

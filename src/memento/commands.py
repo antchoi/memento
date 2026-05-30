@@ -9,6 +9,7 @@ import importlib.resources
 import tomllib
 from dataclasses import replace
 from pathlib import Path
+import subprocess
 from typing import Any, Callable
 
 from .approvals import record_approval as save_approval_evidence, release_gate_satisfied
@@ -72,6 +73,7 @@ REQUIRED_COMMANDS = (
     "select-patch",
     "release-gate",
     "recover-jobs",
+    "update",
 )
 FORBIDDEN_CORE_IMPORT_ROOTS = frozenset({"opencode", "oh_my_openagent"})
 
@@ -1396,6 +1398,69 @@ class CommandService:
             "job_count": len(recovered_jobs),
             "jobs": recovered_jobs,
         }
+
+
+    def update(self, args: dict[str, Any]) -> dict[str, Any]:
+        workspace = Path(args.get("workspace") or Path.cwd())
+        current_version = __import__("memento").__version__
+
+        results = {"steps": []}
+        all_ok = True
+
+        # 1. PyPI self-update via pipx/uv
+        try:
+            proc = subprocess.run(
+                ["pipx", "upgrade", "memento-lifecycle"],
+                capture_output=True,
+                text=True,
+            )
+            pypi_ok = proc.returncode == 0
+            results["steps"].append({
+                "step": "pypi_upgrade",
+                "ok": pypi_ok,
+                "output": proc.stdout if pypi_ok else proc.stderr,
+            })
+            if not pypi_ok:
+                all_ok = False
+        except FileNotFoundError:
+            results["steps"].append({
+                "step": "pypi_upgrade",
+                "ok": False,
+                "error": "pipx not available; try 'pip install --upgrade memento-lifecycle' or use uv",
+            })
+            all_ok = False
+
+        # 2. Check bundled skills
+        bundled_skills_dir = workspace / ".memento" / "skills"
+        if bundled_skills_dir.exists():
+            results["steps"].append({
+                "step": "bundled_skills",
+                "ok": True,
+                "note": "Bundled skills at local workspace may need manual sync. Delete and re-init to refresh.",
+            })
+        else:
+            results["steps"].append({
+                "step": "bundled_skills",
+                "ok": True,
+                "note": "No local bundled skills overrides.",
+            })
+
+        # 3. Executor registry refresh check
+        registry = registry_snapshot()
+        results["steps"].append({
+            "step": "executor_registry",
+            "ok": True,
+            "executors": list(registry.get("executors", {}).keys()),
+        })
+
+        results["ok"] = all_ok
+        results["command"] = "update"
+        results["workspace"] = str(workspace)
+        results["version"] = {
+            "previous": current_version,
+            "note": "Restart required if updated.",
+        }
+        return results
 
     def add_evidence(
         self, run_id: str, *, kind: str, summary: str, uri: str | None = None
